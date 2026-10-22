@@ -40,7 +40,7 @@ class ComposerWithWindowProps extends React.Component<
     // Set the OS window title immediately based on the draft subject (if any)
     const subject = draft.subject && draft.subject.trim();
     AppEnv.getCurrentWindow().setTitle(
-      subject || (newDraft ? localized('New Message') : localized('Message'))
+      subject || (newDraft ? localized('New Draft') : localized('Message'))
     );
   }
 
@@ -65,7 +65,7 @@ class ComposerWithWindowProps extends React.Component<
       if (!d) return;
       const subject = d.subject && d.subject.trim();
       AppEnv.getCurrentWindow().setTitle(
-        subject || (newDraft ? localized('New Message') : localized('Message'))
+        subject || (newDraft ? localized('New Draft') : localized('Message'))
       );
     });
 
