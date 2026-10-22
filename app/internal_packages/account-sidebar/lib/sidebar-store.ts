@@ -19,15 +19,18 @@ import { ISidebarSection } from './types';
 
 const Sections = {
   Standard: 'Standard',
+  Assistant: 'Assistant',
   User: 'User',
 };
 
 class SidebarStore extends MailspringStore {
   _sections: {
     Standard: ISidebarSection;
+    Assistant: ISidebarSection;
     User: ISidebarSection[];
   } = {
     Standard: { title: '', items: [] },
+    Assistant: { title: '', items: [] },
     User: [],
   };
   configSubscription: Disposable;
@@ -54,6 +57,10 @@ class SidebarStore extends MailspringStore {
 
   standardSection() {
     return this._sections.Standard;
+  }
+
+  assistantSection() {
+    return this._sections.Assistant;
   }
 
   userSections() {
@@ -151,6 +158,7 @@ class SidebarStore extends MailspringStore {
     const multiAccount = accounts.length > 1;
 
     this._sections[Sections.Standard] = SidebarSection.standardSectionForAccounts(accounts);
+    this._sections[Sections.Assistant] = SidebarSection.forAssistantCategories(accounts);
     this._sections[Sections.User] = accounts.map(function (acc) {
       const opts: { title?: string; collapsible?: boolean } = {};
       if (multiAccount) {

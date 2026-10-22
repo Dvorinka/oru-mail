@@ -1,5 +1,5 @@
 import React from 'react';
-import { localized, Utils, DOMUtils, Account, AccountStore } from 'mailspring-exports';
+import { localized, Utils, DOMUtils, Actions, Account, AccountStore } from 'mailspring-exports';
 import { OutlineView, ScrollRegion, Flexbox } from 'mailspring-component-kit';
 import AccountSwitcher from './account-switcher';
 import SidebarStore from '../sidebar-store';
@@ -10,6 +10,7 @@ interface AccountSidebarState {
   sidebarAccountIds: string[];
   userSections: ISidebarSection[];
   standardSection: ISidebarSection;
+  assistantSection: ISidebarSection;
 }
 
 export default class AccountSidebar extends React.Component<
@@ -55,6 +56,7 @@ export default class AccountSidebar extends React.Component<
       sidebarAccountIds: SidebarStore.sidebarAccountIds(),
       userSections: SidebarStore.userSections(),
       standardSection: SidebarStore.standardSection(),
+      assistantSection: SidebarStore.assistantSection(),
     };
   };
 
@@ -64,13 +66,26 @@ export default class AccountSidebar extends React.Component<
 
   render() {
     const { accounts, sidebarAccountIds, userSections, standardSection } = this.state;
+    const { assistantSection } = this.state;
 
     return (
       <Flexbox direction="column" style={{ order: 0, flexShrink: 1, flex: 1 }}>
+        <div className="oru-compose">
+          <button
+            className="btn-compose-pill"
+            onClick={() => Actions.composeNewBlankDraft()}
+            aria-label={localized('Compose new message')}
+          >
+            {localized('Compose')}
+          </button>
+        </div>
         <ScrollRegion className="account-sidebar" style={{ order: 2 }}>
           <AccountSwitcher accounts={accounts} sidebarAccountIds={sidebarAccountIds} />
           <nav className="account-sidebar-sections" aria-label={localized('Mailboxes')}>
             <OutlineView {...standardSection} />
+            <div className="outline-view-assistant">
+              <OutlineView {...assistantSection} />
+            </div>
             {this._renderUserSections(userSections)}
           </nav>
         </ScrollRegion>
