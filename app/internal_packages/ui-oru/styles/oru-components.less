@@ -11,7 +11,7 @@ body {
 // avatar + participants line + subject + two-line snippet.
 mailspring-workspace {
   --thread-list-narrow-style-width: 100000px;
-  --thread-list-item-height-narrow: 76px;
+  --thread-list-item-height-narrow: 88px;
 }
 
 // A section with no items (e.g. empty Folders/Labels area) renders nothing —
@@ -128,6 +128,17 @@ mailspring-workspace {
       font-weight: 600;
     }
   }
+
+  // Edison insets row content ~14px from both edges of the list column.
+  .icons-column {
+    width: 52px;
+    margin-left: 8px;
+    margin-right: 0;
+  }
+
+  .thread-info-column {
+    padding-right: 14px;
+  }
 }
 
 .thread-avatar {
@@ -135,7 +146,7 @@ mailspring-workspace {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  margin: 12px 12px 0 4px;
+  margin: 14px 10px 0 2px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -146,9 +157,26 @@ mailspring-workspace {
   user-select: none;
 }
 
+// Edison marks unread with a small filled accent dot, not a PNG.
+.thread-icon.thread-icon-unread {
+  background-image: none;
+  position: relative;
+
+  &:after {
+    content: '';
+    display: block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: @accent-primary;
+    margin: 2px auto 0;
+  }
+}
+
 .thread-info-column {
   min-width: 0;
-  padding: 10px 8px 10px 0;
+  padding-top: 10px;
+  padding-bottom: 10px;
 
   .participants-wrapper {
     display: flex;
@@ -166,6 +194,11 @@ mailspring-workspace {
     text-overflow: ellipsis;
   }
 
+  // Block-level so the snippet can wrap to two lines (Edison preview).
+  .snippet-and-labels {
+    display: block;
+  }
+
   .snippet {
     font-size: 13px;
     line-height: 17px;
@@ -173,19 +206,103 @@ mailspring-workspace {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
+    white-space: normal;
     overflow: hidden;
   }
 }
 
 // ---------- Message pane ----------
+// Edison's reading pane is a flat white surface — no card chrome, no right
+// sidebar rail. The list keeps the warm tint; the pane goes white. Several
+// wrappers cover the column below the card, so they all go white.
+.column-MessageList,
+.column-MessageList .key-commands-region,
+.column-MessageList section.message-list,
+.column-MessageList .messages-wrap,
+.column-MessageList .scroll-region-content-inner {
+  background: #fff;
+}
+
+.column-MessageList {
+  border-left: 1px solid @border-color-divider;
+
+  // Edison centers a faint illustration when nothing is selected.
+  &:not(:has(.message-item-wrap)) {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M6 18 L32 4 L58 18 L58 50 Q58 54 54 54 L10 54 Q6 54 6 50 Z' fill='%236E7480' fill-opacity='0.10'/%3E%3Cpath d='M6 18 L32 36 L58 18 L58 24 L32 42 L6 24 Z' fill='%236E7480' fill-opacity='0.16'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center 40%;
+    background-size: 110px;
+  }
+}
+
+// Edison has no fourth pane — the participants/calendar rail is upstream-only.
+.column-MessageListSidebar {
+  display: none;
+}
+
 #message-list .message-subject-wrap,
 .message-subject-wrap {
-  padding: 18px 29px 4px;
+  padding: 20px 29px 8px;
+  border-bottom: 1px solid @border-color-divider;
 
   .message-subject {
     font-size: 18px;
     font-weight: 600;
     line-height: 24px;
+    color: @text-color;
+  }
+}
+
+.message-item-white-wrap,
+.message-item-area {
+  background: #fff;
+  box-shadow: none;
+  border-radius: 0;
+  margin: 0;
+}
+
+.message-item-wrap .message-header {
+  padding: 16px 29px 6px;
+
+  .participants .participant-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: @text-color;
+  }
+
+  .participant-label {
+    font-size: 12px;
+    color: @text-color-very-subtle;
+  }
+
+  .message-header-right .message-time {
+    font-size: 12px;
+    color: @text-color-very-subtle;
+  }
+}
+
+// Message body: sans body copy with Edison's measure.
+.message-item-area .message-body-container,
+#message-list .message-item-area {
+  padding: 4px 29px 24px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+// Message action strip (reply icon, dropdown, block, ellipsis) — ghost buttons.
+.message-actions-wrap {
+  .btn-toolbar,
+  .button-dropdown .primary-item,
+  .button-dropdown .secondary-picker {
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    border-radius: 50%;
+    padding: 6px;
+
+    &:hover {
+      background: fade(@text-color, 8%);
+    }
   }
 }
 
@@ -201,29 +318,34 @@ mailspring-workspace {
   }
 }
 
-// Block / Unsubscribe pill next to the message actions (Edison .blockBtn).
+// Block / Unblock pill next to the message actions — Edison uses a plain
+// outlined pill that warms to accent on hover.
 .blockBtn {
   display: inline-block;
   height: 24px;
   line-height: 22px;
   padding: 0 12px;
   margin: 0 8px;
+  border: 1px solid fade(@text-color, 28%);
   border-radius: 15px;
-  background: fade(@text-color, 6%);
-  color: @accent-primary;
+  background: transparent;
+  color: @text-color-subtle;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   vertical-align: middle;
 
   &:hover {
-    background: fade(@accent-primary, 12%);
+    border-color: @accent-primary;
+    color: @accent-primary;
   }
 }
 
 // Sticky reply area — Edison renders two outlined pills (Reply | Forward).
 .footer-reply-area-wrap {
-  box-shadow: 0 -2px 12px fade(@text-color, 8%);
+  background: #fff;
+  border-top: 1px solid @border-color-divider;
+  box-shadow: none;
 
   .footer-reply-area {
     display: flex;
