@@ -157,6 +157,17 @@ mailspring-workspace {
   user-select: none;
 }
 
+// Edison rows carry no category color bars or importance markers — the
+// account color bar (a classless inline-styled span), injected label
+// swatch, and mail-important strip all render as bare accent strips next
+// to the sender name, so they're hidden here. The message header still
+// shows the removable chip.
+.thread-info-column .thread-injected-mail-labels,
+.thread-list .icons-column .mail-important-icon,
+.thread-list .participants > span:not([class]) {
+  display: none;
+}
+
 // Edison marks unread with a small filled accent dot, not a PNG.
 .thread-icon.thread-icon-unread {
   background-image: none;
