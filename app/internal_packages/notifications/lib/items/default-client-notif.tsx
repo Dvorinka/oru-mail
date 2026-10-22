@@ -57,7 +57,7 @@ export default class DefaultClientNotification extends React.Component<
             buttons: [localized('OK')],
             message: localized('Could not set as default mail client'),
             detail: localized(
-              'Mailspring could not find the xdg-mime utility. Please install the xdg-utils package using your system package manager (e.g. apt install xdg-utils) and try again from Preferences > General.'
+              'Oru Mail could not find the xdg-mime utility. Please install the xdg-utils package using your system package manager (e.g. apt install xdg-utils) and try again from Preferences > General.'
             ),
           });
         } else {
@@ -78,7 +78,7 @@ export default class DefaultClientNotification extends React.Component<
     }
     return (
       <Notification
-        title={localized('Would you like to make Mailspring your default mail client?')}
+        title={localized('Would you like to make Oru Mail your default mail client?')}
         priority="1"
         icon="volstead-defaultclient.png"
         actions={[

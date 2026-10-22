@@ -12,7 +12,7 @@ function buildShareHTML(htmlEl: HTMLElement, styleEl: HTMLStyleElement) {
     <head>
     <meta charset="utf-8"> 
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-    <meta name="author" content="Mailspring">
+    <meta name="author" content="Oru Mail">
     <title>Mailspring Activity</title>
     <style type="text/css">
     body {

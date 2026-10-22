@@ -66,7 +66,7 @@ export function withApiVersion<T extends object>(manifest: T): T {
 /** The message the authoring panel offers when a View is too old to run. */
 export function rebuildRequest(version: string) {
   return (
-    `This View was built for Mailspring View API ${version}, which this version of Mailspring ` +
+    `This View was built for Oru Mail View API ${version}, which this version of Oru Mail ` +
     `no longer runs. Please update it to API ${CURRENT_API_VERSION}: set "apiVersion": ` +
     `"${CURRENT_API_VERSION}" in manifest.json and adjust any calls that changed, keeping the ` +
     `View's behavior the same.`
