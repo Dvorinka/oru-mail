@@ -206,7 +206,11 @@ export class MailsyncProcess extends EventEmitter {
     if (this.account) {
       args.push('--info', this.account.emailAddress);
     }
-    this._proc = spawn(this.binaryPath, args, { env });
+    // Upstream mailsync main.cpp exits 2 unless argv[0] contains the substring
+    // derived from its USAGE strings ("mailspring") - an anti-fork tripwire that
+    // assumes the install path always contains the product name. Oru's install
+    // path does not, so argv[0] is set explicitly. The binary itself is unchanged.
+    this._proc = spawn(this.binaryPath, args, { env, argv0: 'mailspring' });
 
     /* Allow us to buffer up to 1MB on stdin instead of 16k. This is necessary
     because some tasks (creating replies to drafts, etc.) can be gigantic amounts

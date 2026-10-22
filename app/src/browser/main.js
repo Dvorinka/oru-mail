@@ -42,12 +42,12 @@ if (typeof process.setFdLimit === 'function') {
 }
 
 const setupConfigDir = args => {
-  let dirname = 'Mailspring';
+  let dirname = 'OruMail';
   if (args.devMode) {
-    dirname = 'Mailspring-dev';
+    dirname = 'OruMail-dev';
   }
   if (args.specMode) {
-    dirname = 'Mailspring-spec';
+    dirname = 'OruMail-spec';
   }
 
   // Check if a custom config dir was provided via --config-dir-path
@@ -91,7 +91,7 @@ const declareOptions = argv => {
   const optimist = require('optimist');
   const options = optimist(argv);
   options.usage(
-    `Mailspring\n\nUsage: mailspring [options] [recipient] [attachment]\n\nRun Mailspring: The open source extensible email client\n\n\`mailspring mailto:johndoe@example.com\` to compose an e-mail to johndoe@example.com.\n\`mailspring ./attachment.txt\` to compose an e-mail with a text file attached.\n\`mailspring --dev\` to start the client in dev mode.\n\`mailspring --test\` to run unit tests.`
+    `Oru Mail\n\nUsage: orumail [options] [recipient] [attachment]\n\nRun Oru Mail: The open source extensible email client\n\n\`orumail mailto:johndoe@example.com\` to compose an e-mail to johndoe@example.com.\n\`orumail ./attachment.txt\` to compose an e-mail with a text file attached.\n\`orumail --dev\` to start the client in dev mode.\n\`orumail --test\` to run unit tests.`
   );
   options
     .alias('d', 'dev')
@@ -293,7 +293,7 @@ const start = () => {
   // StatusNotifierItem ID on Linux, causing their tray visibility settings
   // to be synchronized. See: https://github.com/electron/electron/issues/40936
   if (process.platform === 'linux') {
-    app.setName('Mailspring');
+    app.setName('Oru Mail');
   }
 
 
@@ -323,8 +323,8 @@ const start = () => {
   }
 
   // On Windows, register the AppUserModelId with a display name so notifications
-  // show "Mailspring" instead of "com.squirrel.mailspring.mailspring".
-  // Also register mailto: protocol handler so Windows knows Mailspring can handle
+  // show "Oru Mail" instead of "com.squirrel.mailspring.mailspring".
+  // Also register mailto: protocol handler so Windows knows Oru Mail can handle
   // mailto: links (this doesn't make it the default, just registers it as an option).
   // This handles existing installations and ensures registration completes even if
   // the Squirrel install hook's detached processes didn't finish in time.
