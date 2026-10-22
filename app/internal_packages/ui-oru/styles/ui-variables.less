@@ -1,0 +1,41 @@
+// Oru Mail theme tokens (see DESIGN.md)
+@oru-accent: #E4572E;
+@oru-accent-dark: #C4431F;
+@oru-ink: #16181D;
+@oru-paper: #FAF6EF;
+@oru-teal: #2E7D7B;
+@oru-slate: #6E7480;
+
+// Accent / action color mapping onto upstream variables
+@accent-primary: @oru-accent;
+@accent-primary-dark: @oru-accent-dark;
+@text-color-link: @oru-teal;
+@text-color-link-hover: darken(@oru-teal, 8%);
+@text-color-link-active: darken(@oru-teal, 12%);
+
+// Light surfaces - warm paper instead of Edison's cool white
+@background-primary: @oru-paper;
+@background-secondary: darken(@oru-paper, 3%);
+@background-tertiary: @oru-slate;
+@panel-background-color: darken(@oru-paper, 2%);
+@toolbar-background-color: darken(@oru-paper, 4%);
+
+@text-color: @oru-ink;
+@text-color-subtle: fadeout(@oru-ink, 25%);
+@text-color-very-subtle: @oru-slate;
+@text-color-heading: @oru-ink;
+
+@cards: lighten(@oru-paper, 1%);
+@list-bg: @cards;
+@list-selected-bg: fadeout(@oru-accent, 88%);
+@list-focused-bg: fadeout(@oru-accent, 92%);
+
+// Unread indicator in teal, not accent - keeps accent for actions only
+.unread-true, .thread-list .list-item.unread .thread-subject {
+  color: @oru-teal;
+}
+
+.sheet-toolbar {
+  border-bottom: 1px solid fadeout(@oru-ink, 90%);
+  box-shadow: none;
+}
