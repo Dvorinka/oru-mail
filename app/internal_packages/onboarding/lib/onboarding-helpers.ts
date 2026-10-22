@@ -152,7 +152,7 @@ function mailspringTemplateFor(domain: string, provider: string) {
 function applyContainerFolderDefault(populated: Account) {
   const containerFolderDefault = AccountStore.containerFolderDefaultGetter();
   if (
-    containerFolderDefault !== 'Mailspring' &&
+    containerFolderDefault !== 'Oru Mail' &&
     (populated.settings.container_folder === '' ||
       populated.settings.container_folder === undefined)
   ) {
@@ -255,7 +255,7 @@ export async function expandAccountForSetup(account: Account): Promise<ExpandedA
 
   let confirmServers = false;
   if (mstemplate) {
-    console.log(`Using Mailspring Template: ${JSON.stringify(mstemplate, null, 2)}`);
+    console.log(`Using Oru Mail Template: ${JSON.stringify(mstemplate, null, 2)}`);
   } else {
     const [imap, smtp] = await Promise.all([
       srvServerFor(domain, SRV_SERVICES.imap),
@@ -446,7 +446,7 @@ export async function buildMicrosoftAccountFromAuthResponse(
   // smtp_verification: 'login' keeps the account-add test from sending a test email:
   // reading a shared mailbox must not require send rights, and the test email would be
   // visible to every member of the mailbox. create_helper_folders: false keeps the
-  // sync engine from provisioning "Mailspring/Snoozed" in the shared mailbox, which
+  // sync engine from provisioning "Oru Mail/Snoozed" in the shared mailbox, which
   // would also be visible to every member (snoozing is unavailable in that account).
   const settings: any = {
     refresh_client_id: O365_CLIENT_ID,

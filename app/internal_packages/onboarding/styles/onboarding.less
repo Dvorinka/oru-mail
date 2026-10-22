@@ -502,25 +502,50 @@
   flex-direction: column;
 
   .footer {
-    background-image: linear-gradient(to right, #6061c7 0%, #4782ad 100%);
+    background-image: none;
+    background-color: #faf6ef;
+
+    .btn-continue {
+      background: #e4572e;
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      min-width: 160px;
+      height: 36px;
+      font-weight: 600;
+
+      &:hover {
+        background: #c4431f;
+      }
+    }
   }
 
   a {
-    color: white;
-    border-bottom: 1px solid white;
+    color: #2e7d7b;
+    border-bottom: 1px solid #2e7d7b;
     text-decoration: none;
     font-weight: 300;
     &:hover {
-      background-color: rgba(255, 255, 255, 0.1);
+      background-color: rgba(46, 125, 123, 0.08);
     }
   }
 
   .steps-container {
     position: relative;
     flex: 1;
-    background-image: linear-gradient(to right, #696ae8 0%, #4c9ad2 100%);
-    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-image: none;
+    background-color: #faf6ef;
+    color: #16181d;
     overflow: hidden;
+    text-align: center;
+  }
+
+  .oru-mark {
+    margin-top: -60px;
   }
 
   .hero-text {
@@ -528,6 +553,7 @@
     line-height: 41px;
     font-weight: 200;
     cursor: default;
+    color: #16181d;
   }
 
   .sub-text {
@@ -702,5 +728,67 @@ body.platform-win32 {
     .period {
       top: 56%;
     }
+  }
+}
+
+// --- Oru reskin: Edison-style provider grid on a clean card ---------------
+// This window always runs the base theme (forceBaseTheme), so Oru palette
+// values are literals here rather than theme variables.
+.page.account-choose {
+  .oru-mark {
+    display: block;
+    margin: 48px auto 12px;
+  }
+
+  h2 {
+    font-size: 22px;
+    margin-top: 12px;
+    margin-bottom: 24px;
+  }
+
+  .provider-list {
+    width: 480px;
+    margin: auto;
+    text-align: center;
+  }
+
+  .provider {
+    width: 110px;
+    text-align: center;
+    line-height: 1.4;
+    border: none;
+    background: transparent;
+    margin: 0 0 18px 0;
+    padding: 8px 4px;
+    border-radius: 8px;
+
+    .icon-container {
+      display: block;
+      width: 70px;
+      height: 70px;
+      margin: 0 auto 8px;
+      padding: 0;
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+      overflow: hidden;
+      zoom: 1;
+
+      img.icon {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    }
+
+    .provider-name {
+      font-size: 14px;
+      font-weight: 400;
+      color: rgba(0, 0, 0, 0.55);
+    }
+  }
+
+  .provider:hover {
+    background: rgba(228, 87, 46, 0.07);
   }
 }

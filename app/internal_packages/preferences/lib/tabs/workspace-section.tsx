@@ -66,7 +66,7 @@ class DefaultMailClientItem extends React.Component<
               }
             }}
           >
-            {localized('Use Mailspring as default mail client')}
+            {localized('Use Oru Mail as default mail client')}
           </div>
         </div>
       );
@@ -80,7 +80,7 @@ class DefaultMailClientItem extends React.Component<
           checked={this.state.defaultClient}
           onChange={this.toggleDefaultMailClient}
         />
-        <label htmlFor="default-client">{localized('Use Mailspring as default mail client')}</label>
+        <label htmlFor="default-client">{localized('Use Oru Mail as default mail client')}</label>
       </div>
     );
   }
@@ -184,7 +184,7 @@ const WorkspaceSection = (props: { config: any; configSchema: any }) => {
       {process.platform === 'linux' && (
         <div className="platform-note">
           {localized(
-            `"Launch on system start" only works in XDG-compliant desktop environments. To enable the Mailspring icon in the system tray, you may need to install libappindicator or libayatana-appindicator.`
+            `"Launch on system start" only works in XDG-compliant desktop environments. To enable the Oru Mail icon in the system tray, you may need to install libappindicator or libayatana-appindicator.`
           )}
         </div>
       )}

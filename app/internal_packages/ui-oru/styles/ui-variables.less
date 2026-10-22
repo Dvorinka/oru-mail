@@ -1,0 +1,95 @@
+// Oru Mail theme - Edison-grade geometry, Oru palette (DESIGN.md)
+// All themes need a file called `ui-variables` that extends from the base
+// variables and overrides colors, padding, etc. Other packages import
+// `ui-variables` to make their custom CSS react to the current theme.
+@import 'base/ui-variables';
+
+@oru-accent: #E4572E;
+@oru-accent-dark: #C4431F;
+@oru-ink: #16181D;
+@oru-paper: #FAF6EF;
+@oru-teal: #2E7D7B;
+@oru-slate: #6E7480;
+
+// --- Accent --------------------------------------------------------------
+@accent-primary: @oru-accent;
+@accent-primary-dark: @oru-accent-dark;
+@btn-emphasis-bg-color: @oru-accent;
+@btn-emphasis-text-color: #fff;
+@btn-primary-active: darken(@oru-accent, 16%);
+@menu-item-color-hover: fade(@oru-accent, 10%);
+@menu-item-color-selected: @oru-accent;
+@text-color-link: @oru-teal;
+@text-color-link-hover: darken(@oru-teal, 8%);
+@text-color-link-active: darken(@oru-teal, 12%);
+
+// --- Edison geometry: 10px radius, 13px base, compact controls -------------
+@border-radius-base: 10px;
+@border-radius-large: 5px;
+@border-radius-small: 2px;
+@border-radius-toast: 10px;
+@font-size-base: 13px;
+@component-padding: 10px;
+@component-icon-padding: 5px;
+@component-icon-size: 16px;
+@component-line-height: 25px;
+@component-border-radius: 2px;
+@dropdown-default-option-height: 22px;
+@input-font-size: 14px;
+@padding-base-vertical: 5px;
+@padding-base-horizontal: 12px;
+@padding-large-vertical: 9px;
+@padding-large-horizontal: 16px;
+@padding-small-vertical: 4px;
+@padding-small-horizontal: 10px;
+@padding-xs-vertical: 1px;
+@padding-xs-horizontal: 5px;
+
+// --- Light surfaces: warm paper, soft light borders ------------------------
+@background-primary: @oru-paper;
+@background-secondary: darken(@oru-paper, 4%);
+@background-tertiary: @oru-slate;
+@border-color-primary: #EDE6DA;
+@border-color-secondary: @border-color-primary;
+@border-color-tertiary: @border-color-primary;
+@border-color-divider: @border-color-primary;
+
+@cards: lighten(@oru-paper, 1%);
+@list-bg: #fff;
+@list-border: @border-color-divider;
+@list-hover-bg: darken(@list-bg, 4%);
+@list-focused-bg: fade(@oru-accent, 14%);
+@list-focused-color: inherit;
+@list-focused-border: @border-color-divider;
+@list-selected-bg: @background-secondary;
+@list-selected-color: inherit;
+@list-selected-border: @background-secondary;
+
+@toolbar-background-color: #fff;
+@panel-background-color: #fff;
+@source-list-bg: @panel-background-color;
+@source-list-active-bg: darken(@oru-paper, 4%);
+@dropdown-default-bg-color: #fff;
+@dropdown-default-hover-bg-color: #fbfbfd;
+@input-bg: #fff;
+@input-border-color: fadeout(@border-color-primary, 10%);
+@btn-default-bg-color: darken(@background-primary, 0.5%);
+@btn-default-text-color: @oru-ink;
+@btn-icon-color: #919191;
+
+@text-color: @oru-ink;
+@text-color-subtle: fadeout(@oru-ink, 25%);
+@text-color-very-subtle: @oru-slate;
+@text-color-heading: @oru-ink;
+@text-color-inverse: #fff;
+
+// Unread in teal - accent stays for actions
+.thread-list .list-item.unread .thread-subject,
+.draft-list .list-item.unread {
+  color: @oru-teal;
+}
+
+.sheet-toolbar {
+  border-bottom: 1px solid fadeout(@oru-ink, 90%);
+  box-shadow: none;
+}

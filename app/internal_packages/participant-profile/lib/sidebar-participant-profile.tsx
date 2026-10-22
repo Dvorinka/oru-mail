@@ -245,7 +245,7 @@ export default class SidebarParticipantProfile extends React.Component<
       await FeatureUsageStore.markUsedOrUpgrade('contact-profiles', {
         headerText: localized('All Contact Previews Used'),
         rechargeText: `${localized(
-          `You can view contact profiles for %1$@ emails each %2$@ with Mailspring Basic.`
+          `You can view contact profiles for %1$@ emails each %2$@ with Oru Mail Basic.`
         )} ${localized('Upgrade to Pro today!')}`,
         iconUrl: 'mailspring://participant-profile/assets/ic-contact-profile-modal@2x.png',
       });
@@ -296,7 +296,7 @@ export default class SidebarParticipantProfile extends React.Component<
       <div style={{ textAlign: 'center', marginBottom: 20 }}>
         <p>
           {localized(
-            `The contact sidebar in Mailspring Pro shows information about the people and companies you're emailing with.`
+            `The contact sidebar in Oru Mail Pro shows information about the people and companies you're emailing with.`
           )}
         </p>
         <div className="btn" onClick={!this.state.loading ? this._onClickedToTry : null}>

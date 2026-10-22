@@ -36,7 +36,7 @@ const AccountProviders = [
       <span>
         <strong>{localized('Important')}:</strong>{' '}
         {localizedReactFragment(
-          'Yahoo requires that you create a unique app password for email apps like Mailspring. Follow %@ to create one and then paste it below.',
+          'Yahoo requires that you create a unique app password for email apps like Oru Mail. Follow %@ to create one and then paste it below.',
           <a
             style={{ fontWeight: 600 }}
             href="https://help.yahoo.com/kb/SLN15241.html?guccounter=1"
@@ -79,7 +79,7 @@ const AccountProviders = [
       <span>
         <strong>{localized('Important')}:</strong>{' '}
         {localizedReactFragment(
-          'iCloud requires that you create a unique app password for email apps like Mailspring. Follow %@ to create one and then paste it below.',
+          'iCloud requires that you create a unique app password for email apps like Oru Mail. Follow %@ to create one and then paste it below.',
           <a style={{ fontWeight: 600 }} href="https://support.apple.com/en-us/HT204397">
             {localized('these instructions')}
           </a>
@@ -97,7 +97,7 @@ const AccountProviders = [
       <span>
         <strong>{localized('Important')}:</strong>{' '}
         {localizedReactFragment(
-          'FastMail requires that you create a unique app password of type IMAP for email apps like Mailspring. Follow %@ to create one and then paste it below.',
+          'FastMail requires that you create a unique app password of type IMAP for email apps like Oru Mail. Follow %@ to create one and then paste it below.',
           <a
             style={{ fontWeight: 600 }}
             href="https://www.fastmail.com/help/clients/apppassword.html"
@@ -120,7 +120,7 @@ const AccountProviders = [
         <br />
         <strong>{localized('Important')}:</strong>{' '}
         {localizedReactFragment(
-          'GMX requires that you %@ before using email clients like Mailspring.',
+          'GMX requires that you %@ before using email clients like Oru Mail.',
           <a style={{ fontWeight: 600 }} href="https://support.gmx.com/pop-imap/toggle.html">
             {localized('enable IMAP')}
           </a>
@@ -138,7 +138,7 @@ const AccountProviders = [
       <span>
         <strong>{localized('Important')}:</strong>{' '}
         {localizedReactFragment(
-          'You must %@ and you may need to %@ to connect to your Yandex account. If you use two-factor auth, you must create an %@ for Mailspring.',
+          'You must %@ and you may need to %@ to connect to your Yandex account. If you use two-factor auth, you must create an %@ for Oru Mail.',
           <a style={{ fontWeight: 600 }} href="https://mail.yandex.com/#setup/client">
             {localized('enable IMAP')}
           </a>,

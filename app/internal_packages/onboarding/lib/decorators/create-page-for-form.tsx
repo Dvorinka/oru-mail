@@ -153,7 +153,7 @@ const CreatePageForForm = (FormComponent: React.ComponentType<any> & Record<stri
           buttons: [localized('Go Back'), localized('Continue')],
           message: localized('Are you sure?'),
           detail: localized(
-            `This looks like a Gmail account! While it's possible to setup an App Password and connect to Gmail via IMAP, Mailspring also supports Google OAuth. Go back and select "Gmail & Google Apps" from the provider screen.`
+            `This looks like a Gmail account! While it's possible to setup an App Password and connect to Gmail via IMAP, Oru Mail also supports Google OAuth. Go back and select "Gmail & Google Apps" from the provider screen.`
           ),
         });
         if (buttonIndex === 0) {

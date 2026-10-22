@@ -10,6 +10,7 @@ import {
   CategoryStore,
   Label,
   ExtensionRegistry,
+  MailboxPerspective,
   RegExpUtils,
   localized,
 } from 'mailspring-exports';
@@ -166,6 +167,34 @@ class SidebarSection {
       title: localized('All Accounts'),
       items,
     };
+  }
+
+  // Edison-style assistant categories. Placeholder perspectives for now —
+  // classification lands in a later phase. Icons reuse source-list assets.
+  static forAssistantCategories(accounts: Account[]): ISidebarSection {
+    const defs = [
+      { name: localized('Subscriptions'), iconName: 'activity.png' },
+      { name: localized('Travel'), iconName: 'sent.png' },
+      { name: localized('Packages'), iconName: 'archive.png' },
+      { name: localized('Bill & Receipts'), iconName: 'tag.png' },
+      { name: localized('Entertainment'), iconName: 'starred.png' },
+    ];
+
+    const items = defs.map((def) => {
+      // A shared name keeps EmptyMailboxPerspective instances from comparing
+      // isEqual to one another (and to the no-mailbox default perspective).
+      const perspective = MailboxPerspective.forNothing();
+      perspective.name = def.name;
+      perspective.iconName = def.iconName;
+      return SidebarItem.forPerspective(`assistant-${def.name}`, perspective, {
+        name: def.name,
+        iconName: def.iconName,
+        deletable: false,
+        editable: false,
+      });
+    });
+
+    return { title: localized('Assistant'), items };
   }
 
   static forUserCategories(

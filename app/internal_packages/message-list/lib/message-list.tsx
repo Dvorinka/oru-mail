@@ -22,7 +22,6 @@ import {
 
 import {
   Spinner,
-  RetinaImg,
   MailLabelSet,
   ScrollRegion,
   ScrollPosition,
@@ -382,6 +381,7 @@ class MessageList extends React.Component<Record<string, unknown>, MessageListSt
           <MessageListReplyArea
             key="reply-area"
             onClick={this._onClickReplyArea}
+            onForward={this._onForward}
             replyType={this._replyType()}
           />
         );
@@ -658,26 +658,15 @@ class MessageList extends React.Component<Record<string, unknown>, MessageListSt
   }
 }
 
-class MessageListReplyArea extends React.Component<{ onClick: () => void; replyType: string }> {
-  state = {
-    forcePlaintext: AppEnv.keymaps.getIsAltKeyDown(),
-  };
-
-  componentDidMount() {
-    document.addEventListener(AppEnv.keymaps.EVENT_ALT_KEY_STATE_CHANGE, this.onAltStateChange);
-  }
-  componentWillUnmount() {
-    document.removeEventListener(AppEnv.keymaps.EVENT_ALT_KEY_STATE_CHANGE, this.onAltStateChange);
-  }
-
-  onAltStateChange = () => {
-    this.setState({ forcePlaintext: AppEnv.keymaps.getIsAltKeyDown() });
-  };
-
-  _onKeyDown = (e: React.KeyboardEvent) => {
+class MessageListReplyArea extends React.Component<{
+  onClick: () => void;
+  onForward: () => void;
+  replyType: string;
+}> {
+  _onKeyDown = (action: () => void) => (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      this.props.onClick();
+      action();
     }
   };
 
@@ -691,23 +680,26 @@ class MessageListReplyArea extends React.Component<{ onClick: () => void; replyT
 
   render() {
     return (
-      <div
-        className="footer-reply-area-wrap"
-        role="button"
-        tabIndex={0}
-        onClick={this.props.onClick}
-        onMouseDown={this._onMouseDown}
-        onKeyDown={this._onKeyDown}
-      >
+      <div className="footer-reply-area-wrap">
         <div className="footer-reply-area">
-          <RetinaImg
-            name={`${this.props.replyType}-footer.png`}
-            mode={RetinaImg.Mode.ContentIsMask}
-          />
-          <span className="reply-text">
-            {this.state.forcePlaintext
-              ? localized('Write a plain text reply…')
-              : localized('Write a reply…')}
+          <span
+            className="reply-pill"
+            role="button"
+            tabIndex={0}
+            onClick={this.props.onClick}
+            onMouseDown={this._onMouseDown}
+            onKeyDown={this._onKeyDown(this.props.onClick)}
+          >
+            {this.props.replyType === 'reply-all' ? localized('Reply All') : localized('Reply')}
+          </span>
+          <span
+            className="forward-pill"
+            role="button"
+            tabIndex={0}
+            onClick={this.props.onForward}
+            onKeyDown={this._onKeyDown(this.props.onForward)}
+          >
+            {localized('Forward')}
           </span>
         </div>
       </div>
