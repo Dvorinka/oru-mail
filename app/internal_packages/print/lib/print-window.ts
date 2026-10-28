@@ -114,7 +114,7 @@ export default class PrintWindow {
         AppEnv.showErrorDialog({
           title: localized('Save as PDF Failed'),
           message: localized(
-            'Mailspring could not generate the PDF. Please try again. If the problem persists, try printing to a PDF printer instead.\n\nError: %@',
+            'Oru Mail could not generate the PDF. Please try again. If the problem persists, try printing to a PDF printer instead.\n\nError: %@',
             err.message
           ),
         });

@@ -182,7 +182,7 @@ export class SendDraftTask extends Task {
       );
     } else if (key === 'send-failed') {
       errorMessage = localized(
-        `Sorry, Mailspring was unable to deliver this message: %@`,
+        `Sorry, Oru Mail was unable to deliver this message: %@`,
         LocalizedErrorStrings[debuginfo] || debuginfo
       );
     } else {

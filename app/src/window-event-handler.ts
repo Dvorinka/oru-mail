@@ -376,7 +376,7 @@ export default class WindowEventHandler {
           AppEnv.showErrorDialog({
             title: localized('Failed to Open Link'),
             message: localized(
-              'Mailspring was unable to open the link in your browser.\n\n%@',
+              'Oru Mail was unable to open the link in your browser.\n\n%@',
               err.message
             ),
           });

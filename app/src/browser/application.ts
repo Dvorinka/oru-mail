@@ -512,6 +512,18 @@ export default class Application extends EventEmitter {
       shell.openExternal(helpUrl);
     });
 
+    this.on('application:report-bug', () => {
+      shell.openExternal('https://github.com/Dvorinka/oru-mail/issues/new');
+    });
+
+    this.on('application:view-privacy', () => {
+      shell.openExternal('https://getmailspring.com/privacy-policy');
+    });
+
+    this.on('application:view-terms', () => {
+      shell.openExternal('https://getmailspring.com/terms');
+    });
+
     this.on('application:open-preferences', () => {
       const main = this.windowManager.get(WindowManager.MAIN_WINDOW);
       if (main) {
@@ -578,6 +590,27 @@ export default class Application extends EventEmitter {
         Menu.sendActionToFirstResponder('zoom:');
       });
     } else {
+      this.on('application:about', () => {
+        const year = new Date().getFullYear();
+        const icon = nativeImage.createFromPath(
+          path.join(this.resourcePath, 'static', 'images', 'mailspring.png')
+        );
+        dialog.showMessageBox({
+          type: 'info',
+          title: localized('About Oru Mail'),
+          message: 'Oru Mail',
+          detail: [
+            `Version ${this.version}`,
+            '',
+            'A community fork of Mailspring.',
+            `Copyright (C) 2014-${year} Foundry 376, LLC.`,
+            'Released under the GNU General Public License v3.',
+          ].join('\n'),
+          icon: icon.isEmpty() ? undefined : icon,
+          buttons: [localized('OK')],
+          noLink: true,
+        });
+      });
       this.on('application:minimize', () => {
         const win = this.windowManager.focusedWindow();
         if (win) {

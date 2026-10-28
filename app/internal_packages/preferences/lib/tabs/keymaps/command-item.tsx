@@ -139,7 +139,7 @@ export default class CommandKeybinding extends React.Component<
         fs.writeFileSync(keymapPath, JSON.stringify(keymaps, null, 2));
       } catch (err) {
         AppEnv.showErrorDialog(
-          localized(`Mailspring was unable to modify your keymaps at %@.`, keymapPath) +
+          localized(`Oru Mail was unable to modify your keymaps at %@.`, keymapPath) +
             ' ' +
             err.toString()
         );

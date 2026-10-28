@@ -2,7 +2,7 @@
 // in the page, so the hardening is skipped under the e2e harness.
 if (!process.env.PLAYWRIGHT) {
   window.eval = global.eval = function () {
-    throw new Error('Sorry, Mailspring does not support window.eval() for security reasons.');
+    throw new Error('Sorry, Oru Mail does not support window.eval() for security reasons.');
   };
 }
 
@@ -26,7 +26,7 @@ function setLoadTime(loadTime) {
 // just failed, so anything it might require may be the thing that's broken.
 function showSetupErrorInWindow(stack) {
   var heading = document.createElement('h1');
-  heading.textContent = 'Mailspring failed to start.';
+  heading.textContent = 'Oru Mail failed to start.';
   heading.style.cssText = 'margin:0 0 12px;font:600 15px/1.4 system-ui,sans-serif;';
 
   // This window never loaded the app's menus, so there is no Edit > Copy and the platform
