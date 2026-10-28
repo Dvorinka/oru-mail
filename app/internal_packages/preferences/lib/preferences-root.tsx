@@ -7,15 +7,20 @@ import {
   ListensToFluxStore,
   ConfigPropContainer,
 } from 'mailspring-component-kit';
-import { PreferencesUIStore } from 'mailspring-exports';
+import { PreferencesUIStore, localized } from 'mailspring-exports';
 import PreferencesTabsBar from './preferences-tabs-bar';
 
 const stopPropagation = (e: CustomEvent) => {
   e.stopPropagation();
 };
 
-class PreferencesRoot extends React.Component<{ tab: any; tabs: any[]; selection: any }> {
+class PreferencesRoot extends React.Component<
+  { tab: any; tabs: any[]; selection: any },
+  { query: string }
+> {
   static displayName = 'PreferencesRoot';
+
+  state = { query: '' };
 
   // This prevents some basic commands from propagating to the threads list and
   // producing unexpected results
@@ -79,8 +84,19 @@ class PreferencesRoot extends React.Component<{ tab: any; tabs: any[]; selection
         localHandlers={this._localHandlers}
       >
         <Flexbox direction="column">
-          <PreferencesTabsBar tabs={tabs} selection={selection} />
+          <PreferencesTabsBar tabs={tabs} selection={selection} query={this.state.query} />
           <ScrollRegion className="preferences-content">
+            <div className="preferences-section-header">
+              {tab ? <h2 className="preferences-section-title">{tab.displayName}</h2> : null}
+              <input
+                className="preferences-tab-search"
+                type="search"
+                placeholder={localized('Search settings')}
+                value={this.state.query}
+                onChange={(event) => this.setState({ query: event.target.value })}
+                aria-label={localized('Search settings')}
+              />
+            </div>
             <ConfigPropContainer
               ref={(el) => {
                 this._contentComponent = el;

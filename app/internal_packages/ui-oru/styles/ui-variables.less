@@ -72,6 +72,11 @@
 // Reading pane. oru-components.less is shared with the dark theme, which
 // overrides this with the elevated card.
 @oru-message-pane: #fff;
+// HTML mail sits on a light sheet in both themes. The column around it
+// stays @oru-message-pane. email-frame.less reads the sheet ink because
+// the iframe does not inherit the parent's color.
+@oru-message-sheet: #fff;
+@oru-message-sheet-text: #16181D;
 @source-list-bg: @panel-background-color;
 @source-list-active-bg: darken(@oru-paper, 4%);
 @dropdown-default-bg-color: #fff;

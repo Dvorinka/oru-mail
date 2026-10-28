@@ -68,6 +68,9 @@
 
 // ----- Colors -----
 @text-color: @black;
+// Ink inside an HTML message. The iframe does not inherit the pane color.
+// Themes that paint a light sheet override this.
+@oru-message-sheet-text: @text-color;
 @text-color-subtle: fadeout(@text-color, 20%);
 @text-color-very-subtle: fadeout(@text-color, 50%);
 @text-color-inverse: @white;

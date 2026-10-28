@@ -74,6 +74,7 @@ interface PreferencesTabBarProps {
     accountId: string;
     tabId: string;
   };
+  query: string;
 }
 
 class PreferencesTabsBar extends React.Component<PreferencesTabBarProps> {
@@ -81,15 +82,27 @@ class PreferencesTabsBar extends React.Component<PreferencesTabBarProps> {
 
   private _listRef = React.createRef<HTMLDivElement>();
 
+  _visibleTabs() {
+    const query = (this.props.query || '').trim().toLowerCase();
+    if (!query) {
+      return this.props.tabs;
+    }
+    return this.props.tabs.filter((tab) => tab.displayName.toLowerCase().includes(query));
+  }
+
   _onKeyDown = (e: React.KeyboardEvent) => {
-    const { tabs, selection } = this.props;
+    const tabs = this._visibleTabs();
+    if (tabs.length === 0) {
+      return;
+    }
+    const { selection } = this.props;
     const currentIdx = tabs.findIndex((t) => t.tabId === selection.tabId);
 
     let nextIdx: number | null = null;
-    if (e.key === 'ArrowRight') {
-      nextIdx = (currentIdx + 1) % tabs.length;
-    } else if (e.key === 'ArrowLeft') {
-      nextIdx = (currentIdx - 1 + tabs.length) % tabs.length;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      nextIdx = currentIdx < 0 ? 0 : (currentIdx + 1) % tabs.length;
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      nextIdx = currentIdx < 0 ? tabs.length - 1 : (currentIdx - 1 + tabs.length) % tabs.length;
     } else if (e.key === 'Home') {
       nextIdx = 0;
     } else if (e.key === 'End') {
@@ -107,7 +120,7 @@ class PreferencesTabsBar extends React.Component<PreferencesTabBarProps> {
   };
 
   renderTabs() {
-    return this.props.tabs.map((tabItem) => (
+    return this._visibleTabs().map((tabItem) => (
       <PreferencesTabItem key={tabItem.tabId} tabItem={tabItem} selection={this.props.selection} />
     ));
   }

@@ -97,6 +97,9 @@ export class MailboxPerspective {
       if (json.type === AssistantMailboxPerspective.name) {
         return this.forAssistantCategory(json.accountIds, json.categoryId);
       }
+      if (json.type === MailingListMailboxPerspective.name) {
+        return this.forMailingLists(json.accountIds);
+      }
       return this.forInbox(json.accountIds);
     } catch (error) {
       AppEnv.reportError(new Error(`Could not restore mailbox perspective: ${error}`));
@@ -122,6 +125,10 @@ export class MailboxPerspective {
       return null;
     }
     return new AssistantMailboxPerspective(accountIds, categoryId);
+  }
+
+  static forMailingLists(accountIds: string[]) {
+    return new MailingListMailboxPerspective(accountIds);
   }
 
   // Instance Methods
@@ -428,6 +435,30 @@ class AssistantMailboxPerspective extends MailboxPerspective {
       emitResultSet: true,
       updateOnSeparateThread: true,
     });
+  }
+}
+
+/**
+ * Sender list for mail that carries List-Unsubscribe. The thread list does
+ * not run here; the unsubscribe package renders the rows.
+ */
+export class MailingListMailboxPerspective extends MailboxPerspective {
+  constructor(accountIds: string[]) {
+    super(accountIds);
+    this.name = localized('Mailing Lists');
+    this.iconName = 'activity.png';
+  }
+
+  threads(): QuerySubscription<Thread> {
+    return null;
+  }
+
+  canReceiveThreadsFromAccountIds(_accountIds: string[]) {
+    return false;
+  }
+
+  emptyMessage() {
+    return localized('No mailing lists');
   }
 }
 

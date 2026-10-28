@@ -265,13 +265,38 @@ mailspring-workspace {
   }
 }
 
+// Beat the message-list rule (#message-list .message-item-wrap
+// .message-item-white-wrap), which paints @background-primary. In the dark
+// theme that is the dark column, and mail with black text disappears.
+#message-list .message-item-wrap .message-item-white-wrap,
+#message-list .message-item-wrap.collapsed .message-item-white-wrap,
 .message-item-white-wrap,
 .message-item-area {
-  background: @oru-message-pane;
-  color: @text-color;
+  background: @oru-message-sheet;
+  background-color: @oru-message-sheet;
+  color: @oru-message-sheet-text;
   box-shadow: none;
   border-radius: 0;
   margin: 0;
+}
+
+// Dark theme inverts content icons for the dark pane. The sheet is light
+// in both themes, so those icons keep their original color here.
+.message-item-white-wrap {
+  img.content-dark,
+  img.content-light {
+    -webkit-filter: none;
+  }
+
+  .collapsed-from {
+    color: @oru-message-sheet-text;
+  }
+
+  .collapsed-snippet,
+  .collapsed-timestamp,
+  .header-row {
+    color: fade(@oru-message-sheet-text, 45%);
+  }
 }
 
 .message-item-wrap .message-header {
@@ -280,17 +305,17 @@ mailspring-workspace {
   .participants .participant-name {
     font-size: 14px;
     font-weight: 600;
-    color: @text-color;
+    color: @oru-message-sheet-text;
   }
 
   .participant-label {
     font-size: 12px;
-    color: @text-color-very-subtle;
+    color: fade(@oru-message-sheet-text, 45%);
   }
 
   .message-header-right .message-time {
     font-size: 12px;
-    color: @text-color-very-subtle;
+    color: fade(@oru-message-sheet-text, 45%);
   }
 }
 
@@ -314,7 +339,7 @@ mailspring-workspace {
     padding: 6px;
 
     &:hover {
-      background: fade(@text-color, 8%);
+      background: fade(@oru-message-sheet-text, 8%);
     }
   }
 }
@@ -339,10 +364,10 @@ mailspring-workspace {
   line-height: 22px;
   padding: 0 12px;
   margin: 0 8px;
-  border: 1px solid fade(@text-color, 28%);
+  border: 1px solid fade(@oru-message-sheet-text, 28%);
   border-radius: 15px;
   background: transparent;
-  color: @text-color-subtle;
+  color: fade(@oru-message-sheet-text, 25%);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -489,26 +514,102 @@ body .composer-inner-wrap .composer-action-bar-wrap {
 }
 
 // ---------- Preferences ----------
-// Flat tabs. Upstream keeps every section; only the chrome changes.
+// Edison settings: a left rail of sections, and a content header with the
+// section title plus a search field. Flexbox writes flex-direction inline,
+// so the row direction needs !important. Upstream keeps every section.
+body .preferences-wrap > div {
+  flex-direction: row !important;
+  align-items: stretch;
+  height: 100%;
+}
+
 body .preferences-wrap {
   .container-preference-tabs {
+    flex: 0 0 220px;
+    width: 220px;
     background: @panel-background-color;
-    border-bottom: 1px solid @border-color-divider;
+    border-bottom: none;
+    border-right: 1px solid @border-color-divider;
+    overflow: auto;
 
-    .preferences-tabs .item.active {
-      background: transparent;
-      border-radius: 0;
-      box-shadow: inset 0 -2px 0 @accent-primary;
+    .preferences-tabs {
+      flex-direction: column;
+      padding: 8px 0;
 
-      .name {
-        color: @accent-primary;
-        font-weight: 600;
+      > div:not(.item) {
+        display: none;
+      }
+
+      .item {
+        flex: 0 0 auto;
+        max-width: none;
+        min-width: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+        text-align: left;
+        padding: 7px 16px;
+
+        .tab-icon {
+          width: 18px;
+          height: 18px;
+          margin: 0;
+        }
+
+        .name {
+          padding: 0;
+          font-size: 13px;
+          line-height: 18px;
+        }
+
+        &.active {
+          background: fade(@accent-primary, 14%);
+          border-radius: 0;
+          box-shadow: none;
+
+          .name {
+            color: @accent-primary;
+            font-weight: 600;
+          }
+        }
       }
     }
   }
 
   .preferences-content {
+    flex: 1;
+    min-width: 0;
     background: @background-primary;
+  }
+
+  .preferences-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+
+  .preferences-section-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 28px;
+    color: @text-color;
+  }
+
+  .preferences-tab-search {
+    width: 220px;
+    height: 32px;
+    margin: 0 0 0 auto;
+    padding: 0 10px;
+    border: 1px solid @border-color-divider;
+    border-radius: 8px;
+    background: @input-bg;
+    color: @text-color;
+    font-size: 13px;
   }
 
   h6 {

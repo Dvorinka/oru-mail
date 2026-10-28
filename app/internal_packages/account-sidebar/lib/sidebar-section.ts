@@ -183,6 +183,14 @@ class SidebarSection {
         editable: false,
       });
     });
+    items.push(
+      SidebarItem.forPerspective('mailing-lists', MailboxPerspective.forMailingLists(accountIds), {
+        name: localized('Mailing Lists'),
+        iconName: 'activity.png',
+        deletable: false,
+        editable: false,
+      })
+    );
 
     return { title: localized('Assistant'), items };
   }

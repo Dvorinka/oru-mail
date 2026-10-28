@@ -33,10 +33,12 @@ import ThreadListScrollTooltip from './thread-list-scroll-tooltip';
 import ThreadListStore from './thread-list-store';
 import ThreadListContextMenu from './thread-list-context-menu';
 import { threadAriaLabel } from './thread-list-aria-utils';
+import MailingList from '../../list-unsubscribe/lib/mailing-list';
+import { MailingListMailboxPerspective } from '../../../src/mailbox-perspective';
 
 class ThreadList extends React.Component<
   Record<string, unknown>,
-  { style: string; syncing: boolean }
+  { style: string; syncing: boolean; perspectiveKey: string }
 > {
   static displayName = 'ThreadList';
 
@@ -50,13 +52,20 @@ class ThreadList extends React.Component<
   };
 
   unsub?: () => void;
+  unsubPerspective?: () => void;
 
   constructor(props) {
     super(props);
     this.state = {
       style: 'unknown',
       syncing: false,
+      perspectiveKey: this._perspectiveKey(),
     };
+  }
+
+  _perspectiveKey() {
+    const current = FocusedPerspectiveStore.current();
+    return `${current.constructor.name}:${current.name}`;
   }
 
   componentDidMount() {
@@ -65,6 +74,12 @@ class ThreadList extends React.Component<
         syncing: FocusedPerspectiveStore.current().hasSyncingCategories(),
       })
     );
+    this.unsubPerspective = FocusedPerspectiveStore.listen(() => {
+      const perspectiveKey = this._perspectiveKey();
+      if (perspectiveKey !== this.state.perspectiveKey) {
+        this.setState({ perspectiveKey });
+      }
+    });
     window.addEventListener('resize', this._onResize, true);
     ReactDOM.findDOMNode(this).addEventListener('contextmenu', this._onShowContextMenu);
     this._onResize();
@@ -79,6 +94,7 @@ class ThreadList extends React.Component<
 
   componentWillUnmount() {
     this.unsub();
+    this.unsubPerspective();
     window.removeEventListener('resize', this._onResize, true);
     ReactDOM.findDOMNode(this).removeEventListener('contextmenu', this._onShowContextMenu);
   }
@@ -94,6 +110,10 @@ class ThreadList extends React.Component<
   }
 
   render() {
+    if (FocusedPerspectiveStore.current() instanceof MailingListMailboxPerspective) {
+      return <MailingList />;
+    }
+
     let columns, itemHeight;
     if (this.state.style === 'wide') {
       columns = ThreadListColumns.Wide;

@@ -1,0 +1,64 @@
+@import 'ui-variables';
+
+.mailing-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: @background-primary;
+  color: @text-color;
+}
+
+.mailing-list-title {
+  padding: 18px 22px 8px;
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.mailing-list-empty {
+  padding: 48px 22px;
+  color: @text-color-subtle;
+  text-align: center;
+}
+
+.mailing-list-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 24px;
+  overflow: auto;
+}
+
+.mailing-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid @border-color-divider;
+}
+
+.mailing-list-sender {
+  flex: 1;
+  min-width: 0;
+}
+
+.mailing-list-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mailing-list-email,
+.mailing-list-count {
+  color: @text-color-subtle;
+  font-size: 12px;
+}
+
+.mailing-list-count {
+  flex: 0 0 auto;
+}
+
+.mailing-list-unsub {
+  flex: 0 0 auto;
+  border-radius: 14px;
+  padding: 4px 12px;
+}
