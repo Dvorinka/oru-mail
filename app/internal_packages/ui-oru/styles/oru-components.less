@@ -223,15 +223,16 @@ mailspring-workspace {
 }
 
 // ---------- Message pane ----------
-// Edison's reading pane is a flat white surface — no card chrome, no right
-// sidebar rail. The list keeps the warm tint; the pane goes white. Several
-// wrappers cover the column below the card, so they all go white.
+// Flat reading surface — no card chrome, no right sidebar rail. The list
+// keeps its own background. Several wrappers cover the column below the
+// subject, so they all take the theme's pane color (white in light, the
+// elevated card in dark).
 .column-MessageList,
 .column-MessageList .key-commands-region,
 .column-MessageList section.message-list,
 .column-MessageList .messages-wrap,
 .column-MessageList .scroll-region-content-inner {
-  background: #fff;
+  background: @oru-message-pane;
 }
 
 .column-MessageList {
@@ -266,7 +267,8 @@ mailspring-workspace {
 
 .message-item-white-wrap,
 .message-item-area {
-  background: #fff;
+  background: @oru-message-pane;
+  color: @text-color;
   box-shadow: none;
   border-radius: 0;
   margin: 0;
@@ -354,7 +356,7 @@ mailspring-workspace {
 
 // Sticky reply area — Edison renders two outlined pills (Reply | Forward).
 .footer-reply-area-wrap {
-  background: #fff;
+  background: @oru-message-pane;
   border-top: 1px solid @border-color-divider;
   box-shadow: none;
 
