@@ -162,7 +162,7 @@ async function sweep() {
       failedThisSession.add(id);
       AppEnv.showErrorDialog(
         localized(
-          'Could not write the mbox file. The export will finish the next time Mailspring launches; the messages fetched so far remain in %@.',
+          'Could not write the mbox file. The export will finish the next time Oru Mail launches; the messages fetched so far remain in %@.',
           outputDir
         )
       );

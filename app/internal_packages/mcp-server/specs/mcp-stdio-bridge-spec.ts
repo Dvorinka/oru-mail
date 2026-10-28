@@ -174,7 +174,7 @@ describe('mcp-stdio-bridge', function () {
 
         client.send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
         const { error } = await client.response(2);
-        expect(error.message).toContain('Mailspring is not running');
+        expect(error.message).toContain('Oru Mail is not running');
       } finally {
         await client.close();
       }

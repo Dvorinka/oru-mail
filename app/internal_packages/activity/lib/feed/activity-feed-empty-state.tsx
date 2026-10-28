@@ -53,7 +53,7 @@ export function ActivityFeedEmptyState({ hasTrackedMessages }: { hasTrackedMessa
       </ol>
       <p className="hint">
         {localized(
-          'Mailspring remembers the last setting you chose for new messages. Plain-text messages cannot be tracked, and free accounts include a limited number of tracked messages.'
+          'Oru Mail remembers the last setting you chose for new messages. Plain-text messages cannot be tracked, and free accounts include a limited number of tracked messages.'
         )}
       </p>
       <div className="btn btn-emphasis" onClick={() => Actions.composeNewBlankDraft()}>

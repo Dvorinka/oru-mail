@@ -20,6 +20,12 @@ import { Folder } from './flux/models/folder';
 import { Task } from './flux/tasks/task';
 import * as Actions from './flux/actions';
 import { QuerySubscription } from 'mailspring-exports';
+import {
+  ASSISTANT_SIDEBAR_ORDER,
+  assistantCategoryById,
+  filterForAssistantCategory,
+} from './assistant-categories';
+import { FilterMatcher, compileFilter, validateFilter } from './services/mail-access/filter';
 
 let WorkspaceStore = null;
 let ChangeStarredTask = null;
@@ -67,7 +73,12 @@ export class MailboxPerspective {
     return this.forStandardCategories(accountsOrIds, 'inbox');
   }
 
-  static fromJSON(json: { type: string; serializedCategories?: string; accountIds: string[] }) {
+  static fromJSON(json: {
+    type: string;
+    serializedCategories?: string;
+    accountIds: string[];
+    categoryId?: string;
+  }) {
     try {
       if (json.type === CategoryMailboxPerspective.name) {
         const categories = JSON.parse(json.serializedCategories).map(Utils.convertToModel);
@@ -83,11 +94,41 @@ export class MailboxPerspective {
       if (json.type === DraftsMailboxPerspective.name) {
         return this.forDrafts(json.accountIds);
       }
+      if (json.type === AssistantMailboxPerspective.name) {
+        return this.forAssistantCategory(json.accountIds, json.categoryId);
+      }
+      if (json.type === MailingListMailboxPerspective.name) {
+        return this.forMailingLists(json.accountIds);
+      }
       return this.forInbox(json.accountIds);
     } catch (error) {
       AppEnv.reportError(new Error(`Could not restore mailbox perspective: ${error}`));
       return null;
     }
+  }
+
+  // Sidebar assistant views. Names are localized here so a restored perspective
+  // matches the sidebar item built for the same category id.
+  static assistantCategories() {
+    return ASSISTANT_SIDEBAR_ORDER.map((id) => {
+      const category = assistantCategoryById(id);
+      return {
+        id: category.id,
+        name: localized(category.label),
+        iconName: category.iconName,
+      };
+    });
+  }
+
+  static forAssistantCategory(accountIds: string[], categoryId: string) {
+    if (!assistantCategoryById(categoryId)) {
+      return null;
+    }
+    return new AssistantMailboxPerspective(accountIds, categoryId);
+  }
+
+  static forMailingLists(accountIds: string[]) {
+    return new MailingListMailboxPerspective(accountIds);
   }
 
   // Instance Methods
@@ -327,6 +368,97 @@ class StarredMailboxPerspective extends MailboxPerspective {
       source: 'Removed From List',
     });
     return [task];
+  }
+}
+
+class AssistantMailboxPerspective extends MailboxPerspective {
+  categoryId: string;
+
+  constructor(accountIds: string[], categoryId: string) {
+    super(accountIds);
+    const category = assistantCategoryById(categoryId);
+    if (!category) {
+      throw new Error(`AssistantMailboxPerspective: unknown category ${categoryId}`);
+    }
+    this.categoryId = categoryId;
+    this.name = localized(category.label);
+    this.iconName = category.iconName;
+  }
+
+  toJSON() {
+    return { ...super.toJSON(), categoryId: this.categoryId };
+  }
+
+  isEqual(other: MailboxPerspective & { categoryId?: string }) {
+    return super.isEqual(other) && other.categoryId === this.categoryId;
+  }
+
+  // Heuristic views are not folders. Dropping a thread here would not file it.
+  canReceiveThreadsFromAccountIds(_accountIds: string[]) {
+    return false;
+  }
+
+  // Remove-from-view (swipe, shortcut) archives or trashes, the same as search,
+  // because the view has no folder of its own to remove a label from.
+  tasksForRemovingItems(threads: Thread[], source = 'Dragged out of list') {
+    return TaskFactory.tasksForThreadsByAccountId(threads, (accountThreads, accountId) => {
+      const dest = AccountStore.accountForId(accountId)?.preferredRemovalDestination();
+      if (!dest) {
+        return [];
+      }
+      if (dest.role === 'trash') {
+        return TaskFactory.tasksForMovingToTrash({ threads: accountThreads, source });
+      }
+      return TaskFactory.tasksForArchiving({ threads: accountThreads, source });
+    });
+  }
+
+  _threadQuery() {
+    const filter = validateFilter(filterForAssistantCategory(this.categoryId));
+    const sql = compileFilter('Thread', filter, { accountIds: this.accountIds });
+    const query = DatabaseStore.findAll<Thread>(Thread)
+      .where(new FilterMatcher(sql) as any)
+      .where(Thread.attributes.inAllMail.equal(true))
+      .background()
+      .limit(0);
+
+    // An account_id IN clause can force a full scan. Skip it when the view
+    // already covers every account.
+    if (this.accountIds.length < AccountStore.accounts().length) {
+      query.where(Thread.attributes.accountId.in(this.accountIds));
+    }
+    return query;
+  }
+
+  threads(): QuerySubscription<Thread> {
+    return new MutableQuerySubscription<Thread>(this._threadQuery(), {
+      emitResultSet: true,
+      updateOnSeparateThread: true,
+    });
+  }
+}
+
+/**
+ * Sender list for mail that carries List-Unsubscribe. The thread list does
+ * not run here; the unsubscribe package renders the rows.
+ */
+export class MailingListMailboxPerspective extends MailboxPerspective {
+  constructor(accountIds: string[]) {
+    super(accountIds);
+    this.name = localized('Mailing Lists');
+    this.iconName = 'activity.png';
+  }
+
+  threads(): QuerySubscription<Thread> {
+    return null;
+  }
+
+  canReceiveThreadsFromAccountIds(_accountIds: string[]) {
+    return false;
+  }
+
+  emptyMessage() {
+    return localized('No mailing lists');
   }
 }
 

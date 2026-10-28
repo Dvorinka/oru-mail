@@ -56,7 +56,7 @@ export default class ThreadSharingPopover extends React.Component<
           await FeatureUsageStore.markUsedOrUpgrade('thread-sharing', {
             headerText: localized('All Sharing Links Used'),
             rechargeText: `${localized(
-              `You can share %1$@ emails each %2$@ with Mailspring Basic.`
+              `You can share %1$@ emails each %2$@ with Oru Mail Basic.`
             )} ${localized('Upgrade to Pro today!')}`,
             iconUrl: 'mailspring://thread-sharing/assets/ic-modal-image@2x.png',
           });
@@ -77,7 +77,7 @@ export default class ThreadSharingPopover extends React.Component<
       AppEnv.reportError(error);
       AppEnv.showErrorDialog(
         localized(
-          `Sorry, we were unable to contact the Mailspring servers to share this thread.\n\n%@`,
+          `Sorry, we were unable to contact the Oru Mail servers to share this thread.\n\n%@`,
           error.message
         )
       );
@@ -110,7 +110,7 @@ export default class ThreadSharingPopover extends React.Component<
               {localized('Syncing') + '...'}
               <div className="meta">
                 {localized(
-                  `Mailspring is syncing this thread and its attachments to the cloud. For long threads, this may take a moment.`
+                  `Oru Mail is syncing this thread and its attachments to the cloud. For long threads, this may take a moment.`
                 )}
               </div>
             </label>

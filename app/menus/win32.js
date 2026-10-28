@@ -4,6 +4,19 @@ const { developerToolsAvailable } = require('../src/developer-tools');
 module.exports = {
   menu: [
     {
+      id: 'File',
+      label: localized('File'),
+      submenu: [
+        { label: localized('Sync New Mail Now'), command: 'window:sync-mail-now' },
+        { type: 'separator' },
+        { label: localized('New Message') + '...', command: 'application:new-message' },
+        { type: 'separator' },
+        { label: localized('Print Current Thread'), command: 'core:print-thread' },
+        { type: 'separator' },
+        { label: localized('Close Window'), command: 'window:close' },
+      ],
+    },
+    {
       id: 'Edit',
       label: localized('Edit'),
       submenu: [
@@ -208,21 +221,26 @@ module.exports = {
         { type: 'separator', id: 'account-shortcuts-separator' },
       ],
     },
-    { type: 'separator' },
     {
       role: 'help',
-      label: localized('Help') + '...',
-      command: 'application:view-help',
+      id: 'Help',
+      label: localized('Help'),
+      submenu: [
+        { label: localized('Help Center'), command: 'application:view-help' },
+        { label: localized('Report a Bug') + '...', command: 'application:report-bug' },
+        { type: 'separator' },
+        {
+          label: localized('Getting Started Guide') + '...',
+          command: 'application:view-getting-started',
+        },
+        { label: localized('Community') + '...', command: 'application:view-community' },
+        { type: 'separator' },
+        { label: localized('Privacy Policy'), command: 'application:view-privacy' },
+        { label: localized('Terms of Use'), command: 'application:view-terms' },
+      ],
     },
-    {
-      label: localized('Getting Started Guide') + '...',
-      command: 'application:view-getting-started',
-    },
-    { label: localized('Mailspring Community') + '...', command: 'application:view-community' },
     { type: 'separator' },
-    { label: localized('Sync New Mail Now'), command: 'window:sync-mail-now' },
-    { type: 'separator' },
-    { label: localized('Preferences'), command: 'application:open-preferences' },
+    { label: localized('Settings') + '...', command: 'application:open-preferences' },
     {
       label: localized('Add Account') + '...',
       command: 'application:add-account',
@@ -231,6 +249,8 @@ module.exports = {
     { label: localized('Change Theme') + '...', command: 'window:launch-theme-picker' },
     { label: localized('Install Theme') + '...', command: 'window:install-package' },
     { type: 'separator' },
+    { label: localized('About Oru Mail'), command: 'application:about' },
+    { label: localized('View License'), command: 'application:view-license' },
     { label: 'VERSION', enabled: false },
     {
       label: localized('Restart and Install Update'),
@@ -244,8 +264,6 @@ module.exports = {
     },
     { label: localized('Downloading Update'), enabled: false, visible: false },
     { type: 'separator' },
-    { label: localized('Print Current Thread'), command: 'core:print-thread' },
-    { type: 'separator' },
-    { label: localized('Exit'), command: 'application:quit' },
+    { label: localized('Quit Oru Mail'), command: 'application:quit' },
   ],
 };

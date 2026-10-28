@@ -73,6 +73,7 @@ client_secret.json
 **.bin
 **.tar.gz
 **.dll
+**.pdb
 /app/mailsync.exe
 /app/mailsync.dSYM
 .idea

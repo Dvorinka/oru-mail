@@ -267,6 +267,10 @@ function buildPackagerOptions() {
       win32: path.resolve(appDir, 'build', 'resources', 'win', 'mailspring-square.ico'),
       linux: undefined,
     }[platform],
+    // Executable and output directory stay Mailspring / mailspring. Squirrel
+    // installs to %LocalAppData%\Mailspring and launches mailspring.exe, and
+    // the Windows updater passes that same name to Update.exe. The names a
+    // person reads (window title, file description, setup title) use productName.
     name: { darwin: 'Mailspring', win32: 'Mailspring', linux: 'mailspring' }[platform],
     appCopyright: `Copyright (C) 2014-${new Date().getFullYear()} Foundry 376, LLC. All rights reserved.`,
     derefSymlinks: false,
@@ -386,9 +390,9 @@ function buildPackagerOptions() {
       : undefined,
     win32metadata: {
       CompanyName: 'Foundry 376, LLC',
-      FileDescription: 'Mailspring',
+      FileDescription: packageJSON.productName,
       LegalCopyright: `Copyright (C) 2014-${new Date().getFullYear()} Foundry 376, LLC. All rights reserved.`,
-      ProductName: 'Mailspring',
+      ProductName: packageJSON.productName,
     },
     // NOTE: The following plist keys can NOT be set in the extra.plist since
     // they are manually overridden by electron-packager based on this config:

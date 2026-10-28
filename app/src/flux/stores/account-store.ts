@@ -128,7 +128,7 @@ class _AccountStore extends MailspringStore {
 
     if (message && AppEnv.isMainWindow()) {
       AppEnv.showErrorDialog(
-        `Mailspring was unable to load your account preferences.\n\n${message}`
+        `Oru Mail was unable to load your account preferences.\n\n${message}`
       );
     }
   };

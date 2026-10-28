@@ -10,6 +10,7 @@ import {
   CategoryStore,
   Label,
   ExtensionRegistry,
+  MailboxPerspective,
   RegExpUtils,
   localized,
 } from 'mailspring-exports';
@@ -166,6 +167,32 @@ class SidebarSection {
       title: localized('All Accounts'),
       items,
     };
+  }
+
+  // Assistant categories. Each item is a local rule query (subject, sender
+  // domain, List-Unsubscribe), scoped to the accounts shown in the sidebar.
+  // Ids stay stable across locales; isEqual compares the category id.
+  static forAssistantCategories(accounts: Account[]): ISidebarSection {
+    const accountIds = accounts.map((account) => account.id);
+    const items = MailboxPerspective.assistantCategories().map((def) => {
+      const perspective = MailboxPerspective.forAssistantCategory(accountIds, def.id);
+      return SidebarItem.forPerspective(`assistant-${def.id}`, perspective, {
+        name: def.name,
+        iconName: def.iconName,
+        deletable: false,
+        editable: false,
+      });
+    });
+    items.push(
+      SidebarItem.forPerspective('mailing-lists', MailboxPerspective.forMailingLists(accountIds), {
+        name: localized('Mailing Lists'),
+        iconName: 'activity.png',
+        deletable: false,
+        editable: false,
+      })
+    );
+
+    return { title: localized('Assistant'), items };
   }
 
   static forUserCategories(

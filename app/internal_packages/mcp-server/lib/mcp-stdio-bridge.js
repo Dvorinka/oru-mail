@@ -39,7 +39,7 @@ const JSON_RPC_SERVER_ERROR = -32000;
 const JSON_RPC_INVALID_REQUEST = -32600;
 
 const NOT_RUNNING_MESSAGE =
-  'Mailspring is not running, or its MCP server is disabled. Open Mailspring and check Preferences > MCP Server.';
+  'Oru Mail is not running, or its MCP server is disabled. Open Oru Mail and check Preferences > MCP Server.';
 const DISABLED_MESSAGE =
   'The Mailspring MCP server is turned off. Enable it in Mailspring under Preferences > MCP Server.';
 
@@ -209,7 +209,7 @@ class Bridge {
         return await this.post(message);
       } catch (err) {
         if (!isConnectionError(err) || attempt >= CONNECT_RETRY_LIMIT) throw err;
-        if (attempt === 1) log('Mailspring MCP server is not reachable yet, waiting for it…');
+        if (attempt === 1) log('Oru Mail MCP server is not reachable yet, waiting for it…');
         await new Promise((r) => setTimeout(r, CONNECT_RETRY_MS));
       }
     }

@@ -27,7 +27,9 @@ class SearchMailboxPerspective extends MailboxPerspective {
       this.sourcePerspective = sourcePerspective;
     }
 
-    this.name = `Searching ${this.sourcePerspective.name}`;
+    // The toolbar title. Which mailbox is being searched stays on
+    // sourcePerspective so two searches can still be told apart.
+    this.name = localized('Searching');
   }
 
   emptyMessage() {
@@ -58,7 +60,15 @@ class SearchMailboxPerspective extends MailboxPerspective {
   }
 
   isEqual(other) {
-    return super.isEqual(other) && other.searchQuery === this.searchQuery;
+    if (!(other instanceof SearchMailboxPerspective) || other.searchQuery !== this.searchQuery) {
+      return false;
+    }
+    const source = this.sourcePerspective;
+    const otherSource = other.sourcePerspective;
+    if (source && otherSource && typeof source.isEqual === 'function') {
+      return source.isEqual(otherSource);
+    }
+    return source?.name === otherSource?.name;
   }
 
   threads() {

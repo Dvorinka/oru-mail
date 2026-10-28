@@ -39,7 +39,7 @@ export default {
         properties: {
           mode: {
             type: 'string',
-            default: 'list',
+            default: 'split',
             enum: ['split', 'list', 'splitVertical'],
           },
           systemTray: {

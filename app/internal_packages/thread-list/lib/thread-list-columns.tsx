@@ -11,9 +11,22 @@ import {
 import { localized, FocusedPerspectiveStore, Utils, DateUtils, Thread } from 'mailspring-exports';
 
 import { ThreadArchiveQuickAction, ThreadTrashQuickAction } from './thread-list-quick-actions';
-import ThreadListParticipants from './thread-list-participants';
+import ThreadListParticipants, { getTokens } from './thread-list-participants';
 import ThreadListIcon from './thread-list-icon';
 import { ThreadWithMessagesMetadata } from './types';
+
+const ThreadAvatar = function ({ thread }: { thread: ThreadWithMessagesMetadata }) {
+  const token = getTokens(thread)[0];
+  if (!token) {
+    return null;
+  }
+  const hue = Utils.hueForString(token.contact.email || '');
+  return (
+    <div className="thread-avatar" style={{ backgroundColor: `hsl(${hue}, 50%, 45%)` }}>
+      {token.contact.nameAbbreviation()}
+    </div>
+  );
+};
 
 // Get and format either last sent or last received timestamp depending on thread-list being viewed
 const ThreadListTimestamp = function ({ thread }: { thread: Thread }) {
@@ -199,6 +212,7 @@ const cNarrow = new ListTabular.Column({
     return (
       <div style={{ display: 'flex', alignItems: 'flex-start' }}>
         <div className="icons-column">
+          <ThreadAvatar thread={thread} />
           <ThreadListIcon thread={thread} />
           <InjectedComponentSet
             inline={true}

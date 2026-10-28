@@ -5,6 +5,7 @@ import {
   localized,
   Actions,
   TaskQueue,
+  TaskFactory,
   GetMessageRFC2822Task,
   EmlUtils,
   Thread,
@@ -14,13 +15,95 @@ import {
 import { RetinaImg, ButtonDropdown, Menu } from 'mailspring-component-kit';
 import { developerToolsAvailable } from '../../../src/developer-tools';
 
+export const BLOCKED_SENDERS_KEY = 'core.blockedSenders';
+
+export function blockedSenderEmails(): string[] {
+  return (AppEnv.config.get(BLOCKED_SENDERS_KEY) as string[]) || [];
+}
+
 interface MessageControlsProps {
   thread: Thread;
   message: Message;
 }
 
-export default class MessageControls extends React.Component<MessageControlsProps> {
+export default class MessageControls extends React.Component<
+  MessageControlsProps,
+  { blocked: boolean }
+> {
   static displayName = 'MessageControls';
+
+  state = {
+    blocked: this._senderIsBlocked(),
+  };
+
+  componentDidMount() {
+    this._configSub = AppEnv.config.onDidChange(BLOCKED_SENDERS_KEY, () => {
+      this.setState({ blocked: this._senderIsBlocked() });
+    });
+  }
+
+  componentWillUnmount() {
+    if (this._configSub) {
+      this._configSub.dispose();
+    }
+  }
+
+  _configSub: { dispose: () => void } | null = null;
+
+  _senderEmail() {
+    const from = this.props.message && this.props.message.from;
+    return from && from[0] ? (from[0].email || '').toLowerCase() : '';
+  }
+
+  _senderIsBlocked() {
+    const email = this._senderEmail();
+    return !!email && blockedSenderEmails().includes(email);
+  }
+
+  _onToggleBlock = () => {
+    const email = this._senderEmail();
+    if (!email) {
+      return;
+    }
+    const list = blockedSenderEmails();
+    const blocked = list.includes(email);
+    AppEnv.config.set(
+      BLOCKED_SENDERS_KEY,
+      blocked ? list.filter((e) => e !== email) : [...list, email]
+    );
+    this.setState({ blocked: !blocked });
+
+    if (!blocked && this.props.thread) {
+      const tasks = TaskFactory.tasksForMovingToTrash({
+        threads: [this.props.thread],
+        source: 'Message Header: Block Sender',
+      });
+      Actions.queueTasks(tasks);
+    }
+  };
+
+  _renderBlockBtn() {
+    const { message } = this.props;
+    if (!message || message.draft || (message.isFromMe && message.isFromMe())) {
+      return null;
+    }
+    return (
+      <div
+        className="blockBtn"
+        role="button"
+        tabIndex={0}
+        onClick={this._onToggleBlock}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            this._onToggleBlock();
+          }
+        }}
+      >
+        {this.state.blocked ? localized('Unblock') : localized('Block')}
+      </div>
+    );
+  }
 
   _items() {
     const reply = {
@@ -224,6 +307,7 @@ export default class MessageControls extends React.Component<MessageControlsProp
           closeOnMenuClick
           menu={this._dropdownMenu(items.slice(1))}
         />
+        {this._renderBlockBtn()}
         <div
           className="message-actions-ellipsis"
           tabIndex={-1}

@@ -292,7 +292,7 @@ class LocalAIService {
     if (!modelPath) return Promise.reject(new Error('The local model is not downloaded.'));
 
     const worker = utilityProcess.fork(unpacked(path.join(__dirname, 'local-ai-worker.js')), [], {
-      serviceName: 'Mailspring Local AI',
+      serviceName: 'Oru Mail Local AI',
     });
     this.worker = worker;
     worker.on('message', ({ id, result, error }) => {

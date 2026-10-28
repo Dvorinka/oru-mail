@@ -182,7 +182,7 @@ class SystemStartServiceLinuxBackgroundPortal extends SystemStartServiceBase {
       autostart: true,
       commandline: ['mailspring', '--background', '%U'],
       reason: localized(
-        'Mailspring needs to run in the background to check for new mail and show notifications.'
+        'Oru Mail needs to run in the background to check for new mail and show notifications.'
       ),
     }).catch((error) => {
       console.error('Error configuring to launch on system start:', error);

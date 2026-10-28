@@ -105,6 +105,31 @@
     }
   }
 
+  .preferences-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .preferences-section-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  .preferences-tab-search {
+    width: 200px;
+    height: 28px;
+    margin: 0 0 0 auto;
+    padding: 0 8px;
+    border: 1px solid @border-color-divider;
+    border-radius: 4px;
+    background: @input-bg;
+    color: @text-color;
+  }
+
   .preferences-content {
     flex: 8;
     background-color: lighten(@background-secondary, 1%);

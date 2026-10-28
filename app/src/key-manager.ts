@@ -20,7 +20,7 @@ export const secureStorage = {
   encrypt: (plaintext: string): Promise<Buffer> => safeStorage.encryptStringAsync(plaintext),
   decrypt: (encrypted: Buffer): Promise<DecryptResult> => safeStorage.decryptStringAsync(encrypted),
   // The synchronous API is kept only to read blobs written by 1.23 and earlier. On KWallet the
-  // two APIs key off different wallet entries (sync: "Chromium Keys", async: "Mailspring Keys"),
+  // two APIs key off different wallet entries (sync: "Chromium Keys", async: "Oru Mail Keys"),
   // so a 1.23 blob is unreadable through decryptStringAsync even though both are tagged "v11".
   decryptLegacy: (encrypted: Buffer): string => safeStorage.decryptString(encrypted),
 };
@@ -150,10 +150,10 @@ class KeyManager {
         // Stored-but-unreadable is not the same as nothing stored. Resolving to an empty keyset
         // would let the next read-modify-write mutator persist it, erasing every account's
         // password over a locked keyring or a secret service that has not started yet.
-        console.error('Mailspring could not read saved passwords.', asyncErr, syncErr);
+        console.error('Oru Mail could not read saved passwords.', asyncErr, syncErr);
         this._reportFatalError(
           new Error(
-            localized('Mailspring could not read your saved passwords and cannot continue.') +
+            localized('Oru Mail could not read your saved passwords and cannot continue.') +
               this._encryptionUnavailableHint()
           )
         );
@@ -177,7 +177,7 @@ class KeyManager {
       try {
         await this._writeKeyHash(keys);
       } catch (err) {
-        console.warn('Mailspring could not re-encrypt your saved passwords with the new key.', err);
+        console.warn('Oru Mail could not re-encrypt your saved passwords with the new key.', err);
       }
     }
 
@@ -187,7 +187,7 @@ class KeyManager {
   _encryptionUnavailableHint() {
     return process.platform === 'linux'
       ? localized(
-          ' On Linux, Mailspring stores passwords in your desktop keyring (KWallet, GNOME Keyring, or another Secret Service provider). Please make sure it is installed, running, and unlocked, then restart Mailspring.'
+          ' On Linux, Oru Mail stores passwords in your desktop keyring (KWallet, GNOME Keyring, or another Secret Service provider). Please make sure it is installed, running, and unlocked, then restart Oru Mail.'
         )
       : '';
   }
@@ -196,7 +196,7 @@ class KeyManager {
     const unavailable = () =>
       new Error(
         localized(
-          `Mailspring could not store your password securely because encryption is not available on this system.`
+          `Oru Mail could not store your password securely because encryption is not available on this system.`
         ) + this._encryptionUnavailableHint()
       );
     if (!(await secureStorage.isAvailable())) {
@@ -220,11 +220,11 @@ class KeyManager {
 
     const clickedButton = require('@electron/remote').dialog.showMessageBoxSync({
       type: 'error',
-      buttons: [localized('Mailspring Help'), localized('Quit')],
+      buttons: [localized('Oru Mail Help'), localized('Quit')],
       message:
         err.message ||
         localized(
-          `Mailspring could not store your password securely. For more information, visit %@`,
+          `Oru Mail could not store your password securely. For more information, visit %@`,
           'https://getmailspring.com/docs/password-management-error'
         ),
     });

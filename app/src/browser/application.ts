@@ -133,7 +133,7 @@ export default class Application extends EventEmitter {
         message = localized(`Mailspring could not spawn the mailsync process. %@`, err.toString());
       } else {
         message = localized(
-          `We encountered a problem with your local email database. %@\n\nCheck that no other copies of Mailspring are running and click Rebuild to reset your local cache.`,
+          `We encountered a problem with your local email database. %@\n\nCheck that no other copies of Oru Mail are running and click Rebuild to reset your local cache.`,
           err.toString()
         );
         buttons = [localized('Quit'), localized('Rebuild')];
@@ -356,7 +356,7 @@ export default class Application extends EventEmitter {
     if (hasAccount) {
       this.windowManager.ensureWindow(WindowManager.MAIN_WINDOW, {}, behavior);
     } else {
-      const title = localized('Welcome to Mailspring');
+      const title = localized('Welcome to Oru Mail');
       this.windowManager.ensureWindow(WindowManager.ONBOARDING_WINDOW, { title }, behavior);
     }
   }
@@ -445,7 +445,7 @@ export default class Application extends EventEmitter {
         onboarding.focus();
       } else {
         this.windowManager.ensureWindow(WindowManager.ONBOARDING_WINDOW, {
-          title: localized('Welcome to Mailspring'),
+          title: localized('Welcome to Oru Mail'),
           windowProps: {},
         });
       }
@@ -510,6 +510,18 @@ export default class Application extends EventEmitter {
     this.on('application:view-community', () => {
       const helpUrl = 'https://community.getmailspring.com/';
       shell.openExternal(helpUrl);
+    });
+
+    this.on('application:report-bug', () => {
+      shell.openExternal('https://github.com/Dvorinka/oru-mail/issues/new');
+    });
+
+    this.on('application:view-privacy', () => {
+      shell.openExternal('https://getmailspring.com/privacy-policy');
+    });
+
+    this.on('application:view-terms', () => {
+      shell.openExternal('https://getmailspring.com/terms');
     });
 
     this.on('application:open-preferences', () => {
@@ -578,6 +590,27 @@ export default class Application extends EventEmitter {
         Menu.sendActionToFirstResponder('zoom:');
       });
     } else {
+      this.on('application:about', () => {
+        const year = new Date().getFullYear();
+        const icon = nativeImage.createFromPath(
+          path.join(this.resourcePath, 'static', 'images', 'mailspring.png')
+        );
+        dialog.showMessageBox({
+          type: 'info',
+          title: localized('About Oru Mail'),
+          message: 'Oru Mail',
+          detail: [
+            `Version ${this.version}`,
+            '',
+            'A community fork of Mailspring.',
+            `Copyright (C) 2014-${year} Foundry 376, LLC.`,
+            'Released under the GNU General Public License v3.',
+          ].join('\n'),
+          icon: icon.isEmpty() ? undefined : icon,
+          buttons: [localized('OK')],
+          noLink: true,
+        });
+      });
       this.on('application:minimize', () => {
         const win = this.windowManager.focusedWindow();
         if (win) {
@@ -699,7 +732,7 @@ export default class Application extends EventEmitter {
         defaultId: 0,
         message,
         detail: `${detail}\n\n${localized(
-          'Reset Theme and Restart restores the bundled automatic, light, and dark themes, clears cached theme styles, and restarts Mailspring. Your accounts, mail, plugins, and other settings are not changed.'
+          'Reset Theme and Restart restores the bundled automatic, light, and dark themes, clears cached theme styles, and restarts Oru Mail. Your accounts, mail, plugins, and other settings are not changed.'
         )}`,
       });
       if (buttonIndex === 0) {

@@ -353,7 +353,7 @@ export default class ThemeManager {
       return fs.readFileSync(stylesheetPath, 'utf8');
     } else {
       throw new Error(
-        localized(`Mailspring does not support stylesheets with the extension: %@`, ext)
+        localized(`Oru Mail does not support stylesheets with the extension: %@`, ext)
       );
     }
   }
