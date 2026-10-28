@@ -1,105 +1,101 @@
-// Oru Mail theme - Edison-grade geometry, Oru palette (DESIGN.md)
-// All themes need a file called `ui-variables` that extends from the base
-// variables and overrides colors, padding, etc. Other packages import
-// `ui-variables` to make their custom CSS react to the current theme.
+// Oru. Cool canvas, dark rail, lime signal. See DESIGN.md.
+// Package styles compile against this file alone, so the base import stays.
 @import 'base/ui-variables';
 
-@oru-accent: #E4572E;
-@oru-accent-dark: #C4431F;
-@oru-ink: #16181D;
-@oru-paper: #FAF6EF;
-@oru-teal: #2E7D7B;
-@oru-slate: #6E7480;
+@oru-ink: #17181C;
+@oru-canvas: #F3F2EE;
+@oru-rail: #121418;
+@oru-rail-text: #E6E4DE;
+@oru-rail-muted: #A39F96;
+@oru-signal: #D6F25A;
+@oru-line: #E2E0DA;
+@oru-moss: #1E6B45;
 
-// --- Accent --------------------------------------------------------------
-@accent-primary: @oru-accent;
-@accent-primary-dark: @oru-accent-dark;
-@btn-emphasis-bg-color: @oru-accent;
-@btn-emphasis-text-color: #fff;
-@btn-primary-active: darken(@oru-accent, 16%);
-@menu-item-color-hover: fade(@oru-accent, 10%);
-@menu-item-color-selected: @oru-accent;
-@text-color-link: @oru-teal;
-@text-color-link-hover: darken(@oru-teal, 8%);
-@text-color-link-active: darken(@oru-teal, 12%);
-// Search hits. Edison paints them yellow; this is a mark, not the accent.
-@text-color-search-match: #ffe56a;
+@accent-primary: @oru-ink;
+@accent-primary-dark: #000;
+@btn-emphasis-bg-color: @oru-ink;
+@btn-emphasis-text-color: @oru-canvas;
+@btn-primary-active: #000;
+@menu-item-color-hover: fade(@oru-ink, 6%);
+@menu-item-color-selected: @oru-ink;
+@text-color-link: @oru-moss;
+@text-color-link-hover: darken(@oru-moss, 8%);
+@text-color-link-active: darken(@oru-moss, 12%);
+@text-color-search-match: @oru-signal;
 
-// --- Edison geometry: 10px radius, 13px base, compact controls -------------
-@border-radius-base: 10px;
-@border-radius-large: 5px;
-@border-radius-small: 2px;
-@border-radius-toast: 10px;
+@border-radius-base: 2px;
+@border-radius-large: 2px;
+@border-radius-small: 0;
+@border-radius-toast: 2px;
 @font-size-base: 13px;
-@component-padding: 10px;
-@component-icon-padding: 5px;
+@component-padding: 8px;
+@component-icon-padding: 4px;
 @component-icon-size: 16px;
-@component-line-height: 25px;
+@component-line-height: 24px;
 @component-border-radius: 2px;
-@dropdown-default-option-height: 22px;
-@input-font-size: 14px;
-@padding-base-vertical: 5px;
+@dropdown-default-option-height: 28px;
+@input-font-size: 13px;
+@padding-base-vertical: 6px;
 @padding-base-horizontal: 12px;
-@padding-large-vertical: 9px;
+@padding-large-vertical: 10px;
 @padding-large-horizontal: 16px;
 @padding-small-vertical: 4px;
-@padding-small-horizontal: 10px;
-@padding-xs-vertical: 1px;
-@padding-xs-horizontal: 5px;
+@padding-small-horizontal: 8px;
+@padding-xs-vertical: 2px;
+@padding-xs-horizontal: 6px;
 
-// --- Light surfaces: warm paper, soft light borders ------------------------
-@background-primary: @oru-paper;
-@background-secondary: darken(@oru-paper, 4%);
-@background-tertiary: @oru-slate;
-@border-color-primary: #EDE6DA;
-@border-color-secondary: @border-color-primary;
-@border-color-tertiary: @border-color-primary;
-@border-color-divider: @border-color-primary;
+@background-primary: @oru-canvas;
+@background-secondary: #E7E5DF;
+@background-tertiary: #8A877F;
+@border-color-primary: @oru-line;
+@border-color-secondary: @oru-line;
+@border-color-tertiary: @oru-line;
+@border-color-divider: @oru-line;
 
-@cards: lighten(@oru-paper, 1%);
-@list-bg: #fff;
-@list-border: @border-color-divider;
-@list-hover-bg: darken(@list-bg, 4%);
-@list-focused-bg: fade(@oru-accent, 14%);
+@cards: #FBFBFA;
+@list-bg: #FBFBFA;
+@list-border: @oru-line;
+@list-hover-bg: #F0EEE9;
+@list-focused-bg: #E7E4DC;
 @list-focused-color: inherit;
-@list-focused-border: @border-color-divider;
-@list-selected-bg: @background-secondary;
+@list-focused-border: @oru-line;
+@list-selected-bg: #E7E4DC;
 @list-selected-color: inherit;
-@list-selected-border: @background-secondary;
+@list-selected-border: #E7E4DC;
 
-@toolbar-background-color: #fff;
-@panel-background-color: #fff;
-// Reading pane. oru-components.less is shared with the dark theme, which
-// overrides this with the elevated card.
-@oru-message-pane: #fff;
-// HTML mail sits on a light sheet in both themes. The column around it
-// stays @oru-message-pane. email-frame.less reads the sheet ink because
-// the iframe does not inherit the parent's color.
+@toolbar-background-color: @oru-canvas;
+@panel-background-color: @oru-rail;
+@oru-message-pane: #FBFBFA;
+// HTML mail keeps a white sheet. The iframe does not inherit the pane.
 @oru-message-sheet: #fff;
-@oru-message-sheet-text: #16181D;
-@source-list-bg: @panel-background-color;
-@source-list-active-bg: darken(@oru-paper, 4%);
-@dropdown-default-bg-color: #fff;
-@dropdown-default-hover-bg-color: #fbfbfd;
-@input-bg: #fff;
-@input-border-color: fadeout(@border-color-primary, 10%);
-@btn-default-bg-color: darken(@background-primary, 0.5%);
+@oru-message-sheet-text: @oru-ink;
+@source-list-bg: @oru-rail;
+@source-list-active-bg: transparent;
+@source-list-active-color: @oru-signal;
+@dropdown-default-bg-color: #FBFBFA;
+@dropdown-default-hover-bg-color: #F0EEE9;
+@input-bg: #FBFBFA;
+@input-border: @oru-line;
+@input-border-color: @oru-line;
+@btn-default-bg-color: #FBFBFA;
 @btn-default-text-color: @oru-ink;
-@btn-icon-color: #919191;
+@btn-icon-color: #6E6B64;
 
 @text-color: @oru-ink;
-@text-color-subtle: fadeout(@oru-ink, 25%);
-@text-color-very-subtle: @oru-slate;
+@text-color-subtle: #5E5B55;
+@text-color-very-subtle: #8A877F;
 @text-color-heading: @oru-ink;
-@text-color-inverse: #fff;
+@text-color-inverse: @oru-canvas;
 
-// Unread in teal - accent stays for actions
 .thread-list .list-item.unread .thread-subject,
 .draft-list .list-item.unread {
-  color: @oru-teal;
+  color: @oru-ink;
 }
 
-.sheet-toolbar {
-  border-bottom: 1px solid fadeout(@oru-ink, 90%);
+.sheet-toolbar,
+.sheet-toolbar-container {
+  background-image: none;
+  background-color: @toolbar-background-color;
+  border-bottom: 1px solid @oru-line;
   box-shadow: none;
 }

@@ -1,54 +1,47 @@
 # Oru Mail — Design Identity
 
-## Name & concept
+Oru is its own client. The screen is a dark navigation rail and a cool
+canvas. It does not use Mailspring's blue chrome or the warm paper and
+ember accent from the earlier desktop study.
 
-**Oru** (折る — "to fold", as in origami). A folded-paper mail client: light,
-precise, crafted. Conceptually adjacent to Edison's "light" metaphor — Edison
-was the bulb; Oru is the folded lantern — but visually and legally distinct.
+## Name
 
-- Wordmark: `Oru Mail` (or `oru` lowercase for the mark)
-- Never use: Edison name, lamp mascot, `#1f9aff` Edison blue, "Sift", "Onmail"
+**Oru** (折る, "to fold"). Wordmark: `Oru`. Never use the Edison name,
+lamp mascot, `#1f9aff`, "Sift", or "Onmail".
 
 ## Palette
 
 | Token | Value | Use |
 |---|---|---|
-| `--oru-accent` | `#E4572E` | Primary actions, selection, brand mark |
-| `--oru-accent-dark` | `#C4431F` | Hover/active states |
-| `--oru-ink` | `#16181D` | Primary text (light UI) / dark surfaces |
-| `--oru-paper` | `#FAF6EF` | Warm paper background tint |
-| `--oru-teal` | `#2E7D7B` | Secondary accent — links, categories |
-| `--oru-slate` | `#6E7480` | Secondary text |
-| Dark bg | `#14161A` | Dark theme primary surface |
-| Dark card | `#1E2126` | Dark theme elevated surface |
+| `--oru-ink` | `#17181C` | Text on the canvas, primary buttons in light |
+| `--oru-canvas` | `#F3F2EE` | Workspace behind the list and the message |
+| `--oru-rail` | `#121418` | Sidebar and the icon rail, both themes |
+| `--oru-rail-text` | `#E6E4DE` | Labels on the rail |
+| `--oru-rail-muted` | `#A39F96` | Unselected rail items |
+| `--oru-signal` | `#D6F25A` | Selection, unread mark, compose on the rail |
+| `--oru-line` | `#E2E0DA` | Hairline dividers on the canvas |
+| `--oru-moss` | `#1E6B45` | Links on the light canvas |
 
-Rationale: a warm ember-orange reads unmistakably unlike Edison blue at a
-glance, stays accessible on white and dark surfaces, and suits the origami
-paper metaphor. Teal is the cool counterweight for links/info.
+Dark canvas is `#101114`. The message body stays a white sheet so mail
+that ships black text stays readable. Signal lime is a fill with ink
+text, not small lime type on white.
 
-## Typography
+## Geometry
 
-- UI: system stack (`-apple-system`, `Segoe UI`, `Inter` when bundled later)
-- Code/log output: `Cascadia Code`, monospace
-- Display (wordmark): geometric sans, single weight — the mark carries the identity
+- Radius is 2px. Buttons, search, avatars, and menus are squared.
+- The rail is full height. Compose is a lime rectangle, ink label.
+- Thread rows are full-bleed. Avatars are rounded squares. Unread is a
+  6px lime square.
+- Toolbar buttons are square hit targets, not circles.
 
-## Logo
+## Where the client is going
 
-`brand/oru-mark.svg` — a folded-envelope/origami mark: an orange geometric
-envelope shape with a visible fold diagonal. Simple, single-color-able,
-legible at 16px. Not a lamp, not a bird, not Edison's mascot style.
+`next/` is the rewrite. `crates/oru-core` is the Rust mail model and
+local store. `next/ui` is the React shell: web via Vite, desktop via a
+later Tauri wrapper on Windows and Linux, phones via the same layout
+under 800px. The Electron app in `app/` keeps working and wears this
+identity until the shell replaces it.
 
-## Theme mapping
+## Mark
 
-Theme package `ui-oru` ships light + dark variants in one package:
-- Light: `@oru-paper` background tint, `@oru-accent` buttons/links
-- Dark: `#14161A` surfaces, `#1E2126` cards, `@oru-accent` accents
-- List rows: 2px radius less than upstream defaults, tighter density
-- Composer/send button + toolbar icons take accent color
-- Unread dot: `@oru-teal` (not accent — avoids alarm-fatigue)
-
-## Porting rule
-
-Edison's *behavior* is documented in `PORTS.md`; Edison's *code* is
-reimplemented, never decompiled-and-pasted. GPL cleanliness + upstream diff
-discipline over speed.
+`brand/oru-mark.svg` is a folded envelope in ink and signal lime.

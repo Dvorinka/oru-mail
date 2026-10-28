@@ -6,11 +6,11 @@ import AccountProviders from './account-providers';
 
 const OruMark = () => (
   <svg className="oru-mark" viewBox="0 0 64 64" width="56" height="56" aria-hidden="true">
-    <g fill="#E4572E">
+    <g fill="#17181C">
       <path d="M6 18 L32 4 L58 18 L58 50 Q58 54 54 54 L10 54 Q6 54 6 50 Z" />
-      <path d="M6 18 L32 36 L58 18 L58 24 L32 42 L6 24 Z" fill="#FAF6EF" />
-      <path d="M32 36 L58 18 L58 24 L32 42 Z" fill="#C4431F" />
-      <path d="M32 4 L32 36 L26 33.4 L26 11.2 Z" fill="#F0845F" />
+      <path d="M6 18 L32 36 L58 18 L58 24 L32 42 L6 24 Z" fill="#D6F25A" />
+      <path d="M32 36 L58 18 L58 24 L32 42 Z" fill="#101114" />
+      <path d="M32 4 L32 36 L26 33.4 L26 11.2 Z" fill="#F4F3EF" />
     </g>
   </svg>
 );

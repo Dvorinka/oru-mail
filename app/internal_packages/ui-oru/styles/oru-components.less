@@ -1,32 +1,27 @@
-// Oru component overrides — Edison-derived geometry and density applied to
-// upstream DOM hooks. Palette comes from each theme's ui-variables.less.
-// Loaded after package styles via index.less.
+// Oru chrome. Shared by the light and dark themes. Colors come from each
+// theme's ui-variables.less. The rail is dark in both; the canvas is not.
 
-// ---------- Global type ----------
 body {
-  font-family: -apple-system, 'Segoe UI', 'Inter', 'Helvetica Neue', sans-serif;
+  font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, sans-serif;
 }
 
-// Edison always uses the stacked (narrow) row layout regardless of width —
-// avatar + participants line + subject + two-line snippet.
+// Stacked rows at any width: avatar, sender, subject, two-line preview.
 mailspring-workspace {
   --thread-list-narrow-style-width: 100000px;
-  --thread-list-item-height-narrow: 88px;
+  --thread-list-item-height-narrow: 84px;
 }
 
-// A section with no items (e.g. empty Folders/Labels area) renders nothing —
-// Edison has no placeholder headings.
 .nylas-outline-view:not(:has(.item)) {
   display: none;
 }
 
 // ---------- Toolbar ----------
 .sheet-toolbar {
-  height: 44px;
-  min-height: 44px;
+  height: 48px;
+  min-height: 48px;
 
   .btn-toolbar {
-    border-radius: 50%;
+    border-radius: 2px;
     box-shadow: none;
     border: none;
     background: transparent;
@@ -38,86 +33,136 @@ mailspring-workspace {
   }
 }
 
-// Hide the toolbar compose button — Oru renders a Compose pill in the sidebar.
 .btn-toolbar.item-compose {
   display: none;
 }
 
-// ---------- Account sidebar ----------
+.thread-search-bar {
+  height: 30px;
+  line-height: 30px;
+  border-radius: 2px;
+  box-shadow: none;
+  border: 1px solid @border-color-divider;
+  background: @list-bg;
+  width: 420px;
+}
+
+// ---------- Rails ----------
+.nav-rail,
 .account-sidebar {
-  background: @panel-background-color;
+  background: @oru-rail;
+  color: @oru-rail-text;
+}
+
+.nav-rail {
+  .nav-rail-section::before {
+    border-top-color: fade(@oru-rail-text, 12%);
+  }
+
+  .nav-rail-item {
+    border-radius: 2px;
+
+    img.content-mask {
+      background-color: @oru-rail-muted;
+    }
+
+    &:hover {
+      background: fade(@oru-rail-text, 8%);
+    }
+
+    &.active {
+      background: fade(@oru-signal, 18%);
+      box-shadow: none;
+
+      img.content-mask {
+        background-color: @oru-signal;
+      }
+    }
+  }
+}
+
+// Masks take the rail color. Dark bitmap icons are flipped so they read
+// on the rail in the light theme too. The more specific rule replaces the
+// theme-wide invert, so both themes set the same filter here.
+.account-sidebar {
+  img.content-dark,
+  img.content-light {
+    -webkit-filter: invert(1);
+  }
+
+  .nylas-outline-view .heading {
+    color: @oru-rail-muted;
+  }
+
+  .nylas-outline-view .item {
+    color: @oru-rail-muted;
+    font-size: 13px;
+    line-height: 28px;
+    border-radius: 0;
+    margin: 0;
+    padding: 0 14px;
+
+    img.content-mask {
+      background-color: @oru-rail-muted;
+    }
+
+    &.selected {
+      font-weight: 600;
+      color: @oru-signal;
+      background: transparent;
+      box-shadow: inset 2px 0 0 @oru-signal;
+
+      img.content-mask {
+        background-color: @oru-signal;
+      }
+    }
+  }
 }
 
 .oru-compose {
-  padding: 10px 14px 6px;
+  padding: 14px 12px 8px;
 
   .btn-compose-pill {
     display: block;
     width: 100%;
-    height: 33px;
+    height: 34px;
     border: none;
-    border-radius: 20px;
-    background: @accent-primary;
-    color: @btn-emphasis-text-color;
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.1px;
-    box-shadow: -1px 1.5px 6px fade(@accent-primary, 45%);
+    border-radius: 2px;
+    background: @oru-signal;
+    color: #14161A;
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: 0;
+    box-shadow: none;
     cursor: pointer;
 
     &:hover {
-      background: @accent-primary-dark;
+      background: lighten(@oru-signal, 4%);
     }
     &:active {
-      transform: translateY(1px);
-      box-shadow: none;
+      transform: none;
+      background: darken(@oru-signal, 6%);
     }
   }
 }
 
-.nylas-outline-view {
-  .heading {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    color: @text-color-very-subtle;
-    padding: 8px 14px 2px;
-  }
-
-  .item-container .item {
-    color: @text-color;
-    font-size: 13.5px;
-    line-height: 26px;
-    border-radius: 6px;
-    margin: 0 6px;
-    padding: 0 8px;
-
-    &.selected {
-      font-weight: 600;
-      background: @list-focused-bg;
-    }
-
-    .icon {
-      margin-right: 8px;
-    }
-  }
-}
-
-// Assistant categories sit in their own section below the folders, like
-// Edison's two-section sidebar.
 .outline-view-assistant {
-  margin-top: 10px;
-  border-top: 1px solid @border-color-divider;
-  padding-top: 4px;
+  margin-top: 12px;
+  border-top: 1px solid fade(@oru-rail-text, 12%);
+  padding-top: 6px;
 
-  // Edison shows a bare divider, no section heading.
   .heading {
     display: none;
   }
 }
 
-// ---------- Thread list (narrow) ----------
+// ---------- Thread list ----------
+.column-ThreadList,
+.thread-list,
+.draft-list {
+  background: @list-bg;
+}
+
 .thread-list .list-item,
 .draft-list .list-item {
   border-bottom: 1px solid @list-border;
@@ -125,50 +170,44 @@ mailspring-workspace {
   &.unread {
     .participants,
     .subject {
-      font-weight: 600;
+      font-weight: 650;
     }
   }
 
-  // Edison insets row content ~14px from both edges of the list column.
   .icons-column {
     width: 52px;
-    margin-left: 8px;
+    margin-left: 10px;
     margin-right: 0;
   }
 
   .thread-info-column {
-    padding-right: 14px;
+    padding-right: 16px;
   }
 }
 
 .thread-avatar {
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  margin: 14px 10px 0 2px;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  margin: 16px 10px 0 2px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   text-transform: uppercase;
   user-select: none;
 }
 
-// Edison rows carry no category color bars or importance markers — the
-// account color bar (a classless inline-styled span), injected label
-// swatch, and mail-important strip all render as bare accent strips next
-// to the sender name, so they're hidden here. The message header still
-// shows the removable chip.
+// Account color, importance, and injected label strips sit in the row as
+// raw accent bars. The message header still shows the removable chip.
 .thread-info-column .thread-injected-mail-labels,
 .thread-list .icons-column .mail-important-icon,
 .thread-list .participants > span:not([class]) {
   display: none;
 }
 
-// Edison marks unread with a small filled accent dot, not a PNG.
 .thread-icon.thread-icon-unread {
   background-image: none;
   position: relative;
@@ -176,42 +215,42 @@ mailspring-workspace {
   &:after {
     content: '';
     display: block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: @accent-primary;
-    margin: 2px auto 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 0;
+    background: @oru-signal;
+    margin: 3px auto 0;
   }
 }
 
 .thread-info-column {
   min-width: 0;
-  padding-top: 10px;
-  padding-bottom: 10px;
+  padding-top: 12px;
+  padding-bottom: 12px;
 
   .participants-wrapper {
     display: flex;
     align-items: center;
-    font-size: 14px;
+    font-size: 13px;
     line-height: 18px;
   }
 
   .subject {
     font-size: 13px;
     line-height: 18px;
-    margin: 2px 0;
+    margin: 1px 0;
+    font-weight: 450;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  // Block-level so the snippet can wrap to two lines (Edison preview).
   .snippet-and-labels {
     display: block;
   }
 
   .snippet {
-    font-size: 13px;
+    font-size: 12.5px;
     line-height: 17px;
     color: @text-color-subtle;
     display: -webkit-box;
@@ -223,10 +262,6 @@ mailspring-workspace {
 }
 
 // ---------- Message pane ----------
-// Flat reading surface — no card chrome, no right sidebar rail. The list
-// keeps its own background. Several wrappers cover the column below the
-// subject, so they all take the theme's pane color (white in light, the
-// elevated card in dark).
 .column-MessageList,
 .column-MessageList .key-commands-region,
 .column-MessageList section.message-list,
@@ -238,36 +273,31 @@ mailspring-workspace {
 .column-MessageList {
   border-left: 1px solid @border-color-divider;
 
-  // Edison centers a faint illustration when nothing is selected.
   &:not(:has(.message-item-wrap)) {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M6 18 L32 4 L58 18 L58 50 Q58 54 54 54 L10 54 Q6 54 6 50 Z' fill='%236E7480' fill-opacity='0.10'/%3E%3Cpath d='M6 18 L32 36 L58 18 L58 24 L32 42 L6 24 Z' fill='%236E7480' fill-opacity='0.16'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: center 40%;
-    background-size: 110px;
+    background-image: none;
   }
 }
 
-// Edison has no fourth pane — the participants/calendar rail is upstream-only.
 .column-MessageListSidebar {
   display: none;
 }
 
 #message-list .message-subject-wrap,
 .message-subject-wrap {
-  padding: 20px 29px 8px;
-  border-bottom: 1px solid @border-color-divider;
+  padding: 28px 40px 12px;
+  border-bottom: none;
 
   .message-subject {
-    font-size: 18px;
-    font-weight: 600;
-    line-height: 24px;
+    font-size: 22px;
+    font-weight: 560;
+    line-height: 28px;
+    letter-spacing: -0.02em;
     color: @text-color;
   }
 }
 
-// Beat the message-list rule (#message-list .message-item-wrap
-// .message-item-white-wrap), which paints @background-primary. In the dark
-// theme that is the dark column, and mail with black text disappears.
+// Beat #message-list .message-item-wrap .message-item-white-wrap, which
+// paints the column color. Mail with black text needs the light sheet.
 #message-list .message-item-wrap .message-item-white-wrap,
 #message-list .message-item-wrap.collapsed .message-item-white-wrap,
 .message-item-white-wrap,
@@ -277,11 +307,9 @@ mailspring-workspace {
   color: @oru-message-sheet-text;
   box-shadow: none;
   border-radius: 0;
-  margin: 0;
+  margin: 0 28px;
 }
 
-// Dark theme inverts content icons for the dark pane. The sheet is light
-// in both themes, so those icons keep their original color here.
 .message-item-white-wrap {
   img.content-dark,
   img.content-light {
@@ -300,34 +328,28 @@ mailspring-workspace {
 }
 
 .message-item-wrap .message-header {
-  padding: 16px 29px 6px;
+  padding: 8px 12px 4px;
 
   .participants .participant-name {
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 650;
     color: @oru-message-sheet-text;
   }
 
-  .participant-label {
-    font-size: 12px;
-    color: fade(@oru-message-sheet-text, 45%);
-  }
-
+  .participant-label,
   .message-header-right .message-time {
     font-size: 12px;
     color: fade(@oru-message-sheet-text, 45%);
   }
 }
 
-// Message body: sans body copy with Edison's measure.
 .message-item-area .message-body-container,
 #message-list .message-item-area {
-  padding: 4px 29px 24px;
-  font-size: 14px;
-  line-height: 1.55;
+  padding: 8px 12px 28px;
+  font-size: 14.5px;
+  line-height: 1.6;
 }
 
-// Message action strip (reply icon, dropdown, block, ellipsis) — ghost buttons.
 .message-actions-wrap {
   .btn-toolbar,
   .button-dropdown .primary-item,
@@ -335,7 +357,7 @@ mailspring-workspace {
     border: none;
     box-shadow: none;
     background: transparent;
-    border-radius: 50%;
+    border-radius: 2px;
     padding: 6px;
 
     &:hover {
@@ -344,11 +366,10 @@ mailspring-workspace {
   }
 }
 
-// Removable category chip ("Inbox x") — Edison uses a compact bordered pill.
 .mail-label {
   height: 18px;
   line-height: 18px;
-  border-radius: 9px;
+  border-radius: 2px;
   font-size: 11px;
 
   &.removable .inner {
@@ -356,77 +377,72 @@ mailspring-workspace {
   }
 }
 
-// Block / Unblock pill next to the message actions — Edison uses a plain
-// outlined pill that warms to accent on hover.
 .blockBtn {
   display: inline-block;
   height: 24px;
   line-height: 22px;
-  padding: 0 12px;
+  padding: 0 10px;
   margin: 0 8px;
   border: 1px solid fade(@oru-message-sheet-text, 28%);
-  border-radius: 15px;
+  border-radius: 2px;
   background: transparent;
-  color: fade(@oru-message-sheet-text, 25%);
+  color: fade(@oru-message-sheet-text, 20%);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   vertical-align: middle;
 
   &:hover {
-    border-color: @accent-primary;
-    color: @accent-primary;
+    border-color: @oru-message-sheet-text;
+    color: @oru-message-sheet-text;
   }
 }
 
-// Sticky reply area — Edison renders two outlined pills (Reply | Forward).
 .footer-reply-area-wrap {
   background: @oru-message-pane;
-  border-top: 1px solid @border-color-divider;
+  border-top: none;
   box-shadow: none;
 
   .footer-reply-area {
     display: flex;
-    padding: 12px 29px;
-    gap: 10px;
+    padding: 8px 40px 20px;
+    gap: 8px;
     cursor: default;
 
     .reply-pill,
     .forward-pill {
-      height: 30px;
-      line-height: 28px;
-      padding: 0 18px;
-      border: 1px solid fade(@text-color, 25%);
-      border-radius: 8px;
-      color: @text-color-subtle;
+      height: 32px;
+      line-height: 32px;
+      padding: 0 14px;
+      border: none;
+      border-radius: 2px;
+      color: @btn-emphasis-text-color;
+      background: @accent-primary;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      background: transparent;
 
       &:hover {
-        border-color: @accent-primary;
-        color: @accent-primary;
+        filter: brightness(1.08);
       }
     }
   }
 }
 
 // ---------- Composer ----------
-// Edison's composer is a separate window with a dark title bar. The bar stays
-// dark in both Oru themes (brand ink), so the literal is intentional.
 body .composer-participant-field .composer-field-label {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
   font-weight: 600;
+  color: @text-color-subtle;
 }
 
 body.window-type-composer {
   .sheet-toolbar-container {
     background-image: none;
-    background-color: #16181d;
-    color: #fff;
+    background-color: @oru-rail;
+    color: @oru-rail-text;
     border-bottom: none;
   }
 
@@ -434,19 +450,15 @@ body.window-type-composer {
     border-bottom: none;
 
     .window-title {
-      color: fade(#fff, 85%);
+      color: @oru-rail-text;
     }
 
     .btn-toolbar {
       box-shadow: none;
       background: transparent;
 
-      img {
-        opacity: 1;
-      }
-
       &:hover {
-        background: fade(#fff, 12%);
+        background: fade(@oru-rail-text, 10%);
       }
     }
 
@@ -459,7 +471,7 @@ body.window-type-composer {
 body .composer-inner-wrap .composer-action-bar-wrap {
   border-top: 1px solid @border-color-divider;
   padding: 8px 0;
-  background: @panel-background-color;
+  background: @background-primary;
   box-shadow: none;
   border-radius: 0;
 
@@ -468,11 +480,13 @@ body .composer-inner-wrap .composer-action-bar-wrap {
   }
 
   .btn.btn-toolbar.btn-send {
-    border-radius: 17px;
-    height: 33px;
+    border-radius: 2px;
+    height: 32px;
     padding: 0 16px;
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 650;
+    background: @oru-signal;
+    color: #14161A;
   }
 
   .btn.btn-toolbar.btn-trash {
@@ -480,12 +494,7 @@ body .composer-inner-wrap .composer-action-bar-wrap {
   }
 }
 
-// Onboarding styles live in the onboarding package — that window forces the
-// base theme (theme-manager.forceBaseTheme), so theme overrides never apply.
-
 // ---------- Empty states ----------
-// Folder empties share one Oru mark. The upstream illustration stays in the
-// tree (the component asks for ic-emptystate-*.png) and is not painted.
 .empty-state,
 .thread-list-empty-state {
   color: @text-color-very-subtle;
@@ -499,24 +508,22 @@ body .composer-inner-wrap .composer-action-bar-wrap {
   &::before {
     content: '';
     display: block;
-    width: 88px;
-    height: 88px;
-    margin-bottom: 4px;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M6 18 L32 4 L58 18 L58 50 Q58 54 54 54 L10 54 Q6 54 6 50 Z' fill='%23E4572E'/%3E%3Cpath d='M6 18 L32 36 L58 18 L58 24 L32 42 L6 24 Z' fill='%23FAF6EF'/%3E%3Cpath d='M32 36 L58 18 L58 24 L32 42 Z' fill='%23C4431F'/%3E%3Cpath d='M32 4 L32 36 L26 33.4 L26 11.2 Z' fill='%23F0845F'/%3E%3C/svg%3E")
+    width: 72px;
+    height: 72px;
+    margin-bottom: 8px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M8 16 H56 V52 H8 Z' fill='%2317181C'/%3E%3Cpath d='M8 16 L32 36 L56 16' fill='none' stroke='%23D6F25A' stroke-width='3'/%3E%3C/svg%3E")
       center / contain no-repeat;
   }
 
   .message {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 500;
     color: @text-color-subtle;
   }
 }
 
 // ---------- Preferences ----------
-// Edison settings: a left rail of sections, and a content header with the
-// section title plus a search field. Flexbox writes flex-direction inline,
-// so the row direction needs !important. Upstream keeps every section.
+// Flexbox writes flex-direction inline, so the row needs !important.
 body .preferences-wrap > div {
   flex-direction: row !important;
   align-items: stretch;
@@ -527,14 +534,16 @@ body .preferences-wrap {
   .container-preference-tabs {
     flex: 0 0 220px;
     width: 220px;
-    background: @panel-background-color;
+    background: @oru-rail;
+    color: @oru-rail-text;
     border-bottom: none;
-    border-right: 1px solid @border-color-divider;
+    border-right: none;
     overflow: auto;
 
     .preferences-tabs {
       flex-direction: column;
-      padding: 8px 0;
+      padding: 12px 0;
+      background: transparent;
 
       > div:not(.item) {
         display: none;
@@ -550,7 +559,8 @@ body .preferences-wrap {
         align-items: center;
         gap: 10px;
         text-align: left;
-        padding: 7px 16px;
+        padding: 8px 16px;
+        color: @oru-rail-muted;
 
         .tab-icon {
           width: 18px;
@@ -562,16 +572,18 @@ body .preferences-wrap {
           padding: 0;
           font-size: 13px;
           line-height: 18px;
+          color: inherit;
         }
 
         &.active {
-          background: fade(@accent-primary, 14%);
+          background: transparent;
           border-radius: 0;
-          box-shadow: none;
+          box-shadow: inset 2px 0 0 @oru-signal;
+          color: @oru-signal;
 
           .name {
-            color: @accent-primary;
-            font-weight: 600;
+            color: @oru-signal;
+            font-weight: 650;
           }
         }
       }
@@ -589,14 +601,15 @@ body .preferences-wrap {
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 18px;
+    margin-bottom: 22px;
   }
 
   .preferences-section-title {
     margin: 0;
-    font-size: 22px;
-    font-weight: 600;
-    line-height: 28px;
+    font-size: 26px;
+    font-weight: 560;
+    letter-spacing: -0.03em;
+    line-height: 32px;
     color: @text-color;
   }
 
@@ -606,7 +619,7 @@ body .preferences-wrap {
     margin: 0 0 0 auto;
     padding: 0 10px;
     border: 1px solid @border-color-divider;
-    border-radius: 8px;
+    border-radius: 2px;
     background: @input-bg;
     color: @text-color;
     font-size: 13px;
@@ -614,19 +627,18 @@ body .preferences-wrap {
 
   h6 {
     font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.4px;
+    font-weight: 650;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 }
 
-// ---------- Notifications and in-app menus ----------
 .notification {
-  border-radius: @border-radius-base;
+  border-radius: 2px;
 }
 
 body .dropdown-menu .menu {
-  border-radius: 8px;
+  border-radius: 2px;
   overflow: hidden;
-  box-shadow: 0 8px 24px fade(@text-color, 12%);
+  box-shadow: 0 12px 40px fade(#000, 18%);
 }

@@ -1,0 +1,13 @@
+[package]
+name = "oru-cli"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Lists mailboxes from the Oru core"
+
+[[bin]]
+name = "oru"
+path = "src/main.rs"
+
+[dependencies]
+oru-core = { path = "../oru-core" }

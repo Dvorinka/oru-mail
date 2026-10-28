@@ -1,99 +1,104 @@
-// Oru Mail dark theme (DESIGN.md)
+// Oru dark. Same rail and signal as the light theme. The canvas goes dark.
 @import 'base/ui-variables';
 
-@oru-accent: #F0603C;
-@oru-accent-dark: #D1481F;
-@oru-ink: #E8E4DE;
-@oru-teal: #4FB3AE;
-@oru-slate: #8B919C;
+@oru-ink: #E8E6E1;
+@oru-canvas: #101114;
+@oru-rail: #0C0D10;
+@oru-rail-text: #E6E4DE;
+@oru-rail-muted: #9C9890;
+@oru-signal: #D6F25A;
+@oru-line: #2A2C31;
+@oru-moss: #D6F25A;
 
-@accent-primary: @oru-accent;
-@accent-primary-dark: @oru-accent-dark;
-@btn-emphasis-bg-color: @oru-accent;
-@btn-emphasis-text-color: #fff;
-@menu-item-color-hover: fade(@oru-accent, 16%);
-@menu-item-color-selected: @oru-accent;
-@text-color-link: @oru-teal;
-@text-color-link-hover: lighten(@oru-teal, 8%);
-@text-color-link-active: lighten(@oru-teal, 12%);
-@text-color-search-match: #ffe56a;
+@accent-primary: @oru-signal;
+@accent-primary-dark: #C0DE45;
+@btn-emphasis-bg-color: @oru-signal;
+@btn-emphasis-text-color: #14161A;
+@menu-item-color-hover: fade(@oru-signal, 12%);
+@menu-item-color-selected: @oru-signal;
+@text-color-link: @oru-signal;
+@text-color-link-hover: lighten(@oru-signal, 6%);
+@text-color-link-active: lighten(@oru-signal, 10%);
+@text-color-search-match: @oru-signal;
 
-// same Edison geometry as light
-@border-radius-base: 10px;
-@border-radius-large: 5px;
-@border-radius-small: 2px;
-@border-radius-toast: 10px;
+@border-radius-base: 2px;
+@border-radius-large: 2px;
+@border-radius-small: 0;
+@border-radius-toast: 2px;
 @font-size-base: 13px;
-@component-padding: 10px;
-@component-icon-padding: 5px;
+@component-padding: 8px;
+@component-icon-padding: 4px;
 @component-icon-size: 16px;
-@component-line-height: 25px;
+@component-line-height: 24px;
 @component-border-radius: 2px;
-@dropdown-default-option-height: 22px;
-@input-font-size: 14px;
-@padding-base-vertical: 5px;
+@dropdown-default-option-height: 28px;
+@input-font-size: 13px;
+@padding-base-vertical: 6px;
 @padding-base-horizontal: 12px;
-@padding-large-vertical: 9px;
+@padding-large-vertical: 10px;
 @padding-large-horizontal: 16px;
 @padding-small-vertical: 4px;
-@padding-small-horizontal: 10px;
-@padding-xs-vertical: 1px;
-@padding-xs-horizontal: 5px;
+@padding-small-horizontal: 8px;
+@padding-xs-vertical: 2px;
+@padding-xs-horizontal: 6px;
 
-// dark surfaces
-@background-primary: #14161A;
-@background-off-primary: #1B1E24;
-@background-secondary: #101216;
-@background-tertiary: #6d7987;
-@border-color-primary: #2A2E36;
-@border-color-secondary: lighten(@background-secondary, 10%);
-@border-color-tertiary: lighten(@background-tertiary, 10%);
-@border-color-divider: #2A2E36;
+@background-primary: @oru-canvas;
+@background-off-primary: #18191E;
+@background-secondary: #0C0D10;
+@background-tertiary: #8A877F;
+@border-color-primary: @oru-line;
+@border-color-secondary: @oru-line;
+@border-color-tertiary: @oru-line;
+@border-color-divider: @oru-line;
 
-@cards: #1E2126;
-@list-bg: @cards;
-@list-border: #2E323A;
-@list-hover-bg: lighten(@list-bg, 3%);
-@list-focused-bg: #262B33;
+@cards: #18191E;
+@list-bg: #18191E;
+@list-border: @oru-line;
+@list-hover-bg: #202228;
+@list-focused-bg: #26282E;
 @list-focused-color: inherit;
-@list-selected-bg: @cards;
-@list-selected-color: #fff;
-@list-selected-border: @list-selected-bg;
+@list-selected-bg: #26282E;
+@list-selected-color: @oru-ink;
+@list-selected-border: #26282E;
 
-@toolbar-background-color: #101216;
-@panel-background-color: #101216;
-// Reading pane surface. Shared component CSS reads this instead of #fff.
-@oru-message-pane: #1E2126;
-@source-list-bg: @panel-background-color;
-@source-list-active-bg: #000;
-@outline-item-active-bg: #000;
-@dropdown-default-bg-color: #2A2E33;
-@dropdown-default-hover-bg-color: #000;
-@input-bg: #22262C;
-@input-border: @border-color-divider;
-@btn-default-bg-color: lighten(@background-primary, 5%);
-@btn-icon-color: #7d8590;
-@icon-hover-bg-color: #262B33;
+@toolbar-background-color: @oru-canvas;
+@panel-background-color: @oru-rail;
+@oru-message-pane: #18191E;
+@source-list-bg: @oru-rail;
+@source-list-active-bg: transparent;
+@source-list-active-color: @oru-signal;
+@outline-item-active-bg: transparent;
+@dropdown-default-bg-color: #202228;
+@dropdown-default-hover-bg-color: #26282E;
+@input-bg: #202228;
+@input-border: @oru-line;
+@input-border-color: @oru-line;
+@btn-default-bg-color: #202228;
+@btn-icon-color: #A39F96;
+@icon-hover-bg-color: #26282E;
 
 @text-color: @oru-ink;
-// The reading column stays dark. The message itself is a light sheet so
-// mail that ships black text stays readable. Do not invert the HTML.
+// The column is dark. The message card stays white so black HTML text stays readable.
 @oru-message-sheet: #fff;
-@oru-message-sheet-text: #16181D;
-@text-color-subtle: fadeout(@oru-ink, 20%);
+@oru-message-sheet-text: #17181C;
+@text-color-subtle: fadeout(@oru-ink, 22%);
 @text-color-very-subtle: fadeout(@oru-ink, 45%);
 @text-color-heading: #fff;
-@text-color-inverse: #fff;
+@text-color-inverse: #14161A;
 
 img.content-dark { -webkit-filter: invert(100%); }
 img.content-light { -webkit-filter: invert(100%); }
-.mail-label { -webkit-filter: contrast(110%) brightness(85%); }
+.mail-label { -webkit-filter: none; }
 
-.thread-list .list-item.unread .thread-subject {
-  color: @oru-teal;
+.thread-list .list-item.unread .thread-subject,
+.draft-list .list-item.unread {
+  color: @oru-ink;
 }
 
-.sheet-toolbar {
-  border-bottom: 1px solid transparent;
+.sheet-toolbar,
+.sheet-toolbar-container {
+  background-image: none;
+  background-color: @toolbar-background-color;
+  border-bottom: 1px solid @oru-line;
   box-shadow: none;
 }

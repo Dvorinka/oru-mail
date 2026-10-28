@@ -3,7 +3,7 @@
   "displayName": "Oru",
   "theme": "ui",
   "version": "0.1.0",
-  "description": "The Oru Mail theme - warm paper, ember accent",
+  "description": "The Oru Mail theme - dark rail, cool canvas, lime signal",
   "license": "GPL-3.0",
   "engines": {
     "mailspring": "*"
