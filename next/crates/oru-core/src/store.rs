@@ -1,4 +1,6 @@
-use crate::{Mailbox, Message, Thread};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::{Address, Mailbox, MailboxRole, Message, Thread};
 
 /// Read side of a mailbox. The Electron app keeps using Mailspring-Sync.
 /// This trait is the seam the desktop, web, and phone shells call.
@@ -12,6 +14,7 @@ pub trait MailStore {
 pub struct MemoryStore {
     mailboxes: Vec<Mailbox>,
     threads: Vec<Thread>,
+    next_id: u64,
 }
 
 impl MemoryStore {
@@ -27,26 +30,33 @@ impl MemoryStore {
         self.threads.push(thread);
     }
 
-    /// Demo mailbox used by the CLI and the shell fixture.
+    /// Demo mailbox the CLI and the shell read through the JSON API.
     pub fn demo() -> Self {
         let mut store = Self::new();
         store.insert_mailbox(Mailbox {
             id: "inbox".into(),
             name: "Inbox".into(),
-            role: crate::MailboxRole::Inbox,
+            role: MailboxRole::Inbox,
+        });
+        store.insert_mailbox(Mailbox {
+            id: "sent".into(),
+            name: "Sent".into(),
+            role: MailboxRole::Sent,
         });
         store.insert_mailbox(Mailbox {
             id: "archive".into(),
             name: "Archive".into(),
-            role: crate::MailboxRole::Archive,
+            role: MailboxRole::Archive,
         });
+        let you = Address::new("You", "you@oru.test");
         store.insert_thread(Thread {
             id: "t1".into(),
             mailbox_id: "inbox".into(),
             subject: "Studio notes".into(),
             messages: vec![Message {
                 id: "m1".into(),
-                from: crate::Address::new("Ada Marin", "ada@studio.test"),
+                from: Address::new("Ada Marin", "ada@studio.test"),
+                to: vec![you.clone()],
                 subject: "Studio notes".into(),
                 preview: "The rail stays dark. The canvas stays quiet.".into(),
                 body: "The rail stays dark. The canvas stays quiet.\n\nReply when the type is set.".into(),
@@ -60,7 +70,8 @@ impl MemoryStore {
             subject: "Shipment 441".into(),
             messages: vec![Message {
                 id: "m2".into(),
-                from: crate::Address::new("Northwind", "desk@northwind.test"),
+                from: Address::new("Northwind", "desk@northwind.test"),
+                to: vec![you.clone()],
                 subject: "Shipment 441".into(),
                 preview: "Left the dock this morning.".into(),
                 body: "Left the dock this morning. Tracking is on the invoice.".into(),
@@ -68,8 +79,70 @@ impl MemoryStore {
                 unread: false,
             }],
         });
+        store.insert_thread(Thread {
+            id: "t3".into(),
+            mailbox_id: "sent".into(),
+            subject: "Re: Fold sample".into(),
+            messages: vec![Message {
+                id: "m3".into(),
+                from: you,
+                to: vec![Address::new("Ada Marin", "ada@studio.test")],
+                subject: "Re: Fold sample".into(),
+                preview: "Sending the square mark, not the round one.".into(),
+                body: "Sending the square mark, not the round one. Lime on ink.".into(),
+                unix_secs: 1_729_800_000,
+                unread: false,
+            }],
+        });
         store
     }
+
+    /// Files a message in Sent. The id is local to this process.
+    pub fn send(&mut self, to: &str, subject: &str, body: &str) -> Thread {
+        if !self.mailboxes.iter().any(|mailbox| mailbox.id == "sent") {
+            self.insert_mailbox(Mailbox {
+                id: "sent".into(),
+                name: "Sent".into(),
+                role: MailboxRole::Sent,
+            });
+        }
+        self.next_id += 1;
+        let id = self.next_id;
+        let preview = preview_line(body);
+        let thread = Thread {
+            id: format!("n{id}"),
+            mailbox_id: "sent".into(),
+            subject: subject.to_string(),
+            messages: vec![Message {
+                id: format!("nm{id}"),
+                from: Address::new("You", "you@oru.test"),
+                to: vec![Address::new(to, to)],
+                subject: subject.to_string(),
+                preview,
+                body: body.to_string(),
+                unix_secs: now_secs(),
+                unread: false,
+            }],
+        };
+        self.insert_thread(thread.clone());
+        thread
+    }
+}
+
+fn preview_line(body: &str) -> String {
+    let line = body.lines().find(|line| !line.trim().is_empty()).unwrap_or("");
+    let mut preview: String = line.chars().take(120).collect();
+    if line.chars().count() > 120 {
+        preview.push('…');
+    }
+    preview
+}
+
+fn now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 impl MailStore for MemoryStore {
@@ -110,6 +183,17 @@ mod tests {
         assert!(threads[0].unread());
         assert!(!threads[1].unread());
         assert!(store.threads("archive").is_empty());
+        assert_eq!(store.threads("sent").len(), 1);
         assert_eq!(store.thread("t2").unwrap().subject, "Shipment 441");
+    }
+
+    #[test]
+    fn send_files_the_message_in_sent() {
+        let mut store = MemoryStore::demo();
+        let thread = store.send("ada@studio.test", "Fold", "Lime on ink");
+        assert_eq!(thread.mailbox_id, "sent");
+        assert_eq!(thread.messages[0].to[0].email, "ada@studio.test");
+        assert!(store.threads("sent").iter().any(|item| item.id == thread.id));
+        assert_ne!(thread.id, "t3");
     }
 }

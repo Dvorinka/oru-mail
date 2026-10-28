@@ -24,6 +24,19 @@ pub enum MailboxRole {
     Custom,
 }
 
+impl MailboxRole {
+    /// Stable token in the JSON the shell reads.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Inbox => "inbox",
+            Self::Sent => "sent",
+            Self::Drafts => "drafts",
+            Self::Archive => "archive",
+            Self::Custom => "custom",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Mailbox {
     pub id: String,
@@ -35,6 +48,8 @@ pub struct Mailbox {
 pub struct Message {
     pub id: String,
     pub from: Address,
+    /// Recipients. The shell shows the first address.
+    pub to: Vec<Address>,
     pub subject: String,
     pub preview: String,
     pub body: String,

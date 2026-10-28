@@ -3,7 +3,7 @@ name = "oru-cli"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "Lists mailboxes from the Oru core"
+description = "Serves the Oru mailbox and opens the desktop window"
 
 [[bin]]
 name = "oru"

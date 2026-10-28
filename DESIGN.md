@@ -37,10 +37,11 @@ text, not small lime type on white.
 ## Where the client is going
 
 `next/` is the rewrite. `crates/oru-core` is the Rust mail model and
-local store. `next/ui` is the React shell: web via Vite, desktop via a
-later Tauri wrapper on Windows and Linux, phones via the same layout
-under 800px. The Electron app in `app/` keeps working and wears this
-identity until the shell replaces it.
+local store. `next/ui` is the React shell. `oru serve` is the web app
+and the phone page (the layout stacks under 800px and a manifest makes
+it installable). `oru desktop` opens that same page in a window on
+Windows and Linux. The Electron app in `app/` keeps working and wears
+this identity until the shell replaces it.
 
 ## Mark
 
