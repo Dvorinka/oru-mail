@@ -169,24 +169,14 @@ class SidebarSection {
     };
   }
 
-  // Edison-style assistant categories. Placeholder perspectives for now —
-  // classification lands in a later phase. Icons reuse source-list assets.
+  // Assistant categories. Each item is a local rule query (subject, sender
+  // domain, List-Unsubscribe), scoped to the accounts shown in the sidebar.
+  // Ids stay stable across locales; isEqual compares the category id.
   static forAssistantCategories(accounts: Account[]): ISidebarSection {
-    const defs = [
-      { name: localized('Subscriptions'), iconName: 'activity.png' },
-      { name: localized('Travel'), iconName: 'sent.png' },
-      { name: localized('Packages'), iconName: 'archive.png' },
-      { name: localized('Bill & Receipts'), iconName: 'tag.png' },
-      { name: localized('Entertainment'), iconName: 'starred.png' },
-    ];
-
-    const items = defs.map((def) => {
-      // A shared name keeps EmptyMailboxPerspective instances from comparing
-      // isEqual to one another (and to the no-mailbox default perspective).
-      const perspective = MailboxPerspective.forNothing();
-      perspective.name = def.name;
-      perspective.iconName = def.iconName;
-      return SidebarItem.forPerspective(`assistant-${def.name}`, perspective, {
+    const accountIds = accounts.map((account) => account.id);
+    const items = MailboxPerspective.assistantCategories().map((def) => {
+      const perspective = MailboxPerspective.forAssistantCategory(accountIds, def.id);
+      return SidebarItem.forPerspective(`assistant-${def.id}`, perspective, {
         name: def.name,
         iconName: def.iconName,
         deletable: false,
