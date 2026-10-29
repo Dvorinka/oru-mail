@@ -99,6 +99,10 @@ impl MemoryStore {
 
     /// Files a message in Sent. The id is local to this process.
     pub fn send(&mut self, to: &str, subject: &str, body: &str) -> Thread {
+        self.deliver(Address::new("You", "you@oru.test"), to, subject, body)
+    }
+
+    pub fn deliver(&mut self, from: Address, to: &str, subject: &str, body: &str) -> Thread {
         if !self.mailboxes.iter().any(|mailbox| mailbox.id == "sent") {
             self.insert_mailbox(Mailbox {
                 id: "sent".into(),
@@ -115,7 +119,7 @@ impl MemoryStore {
             subject: subject.to_string(),
             messages: vec![Message {
                 id: format!("nm{id}"),
-                from: Address::new("You", "you@oru.test"),
+                from,
                 to: vec![Address::new(to, to)],
                 subject: subject.to_string(),
                 preview,
@@ -126,6 +130,17 @@ impl MemoryStore {
         };
         self.insert_thread(thread.clone());
         thread
+    }
+
+    /// Clears the unread flag. The shell does this when a thread is opened.
+    pub fn mark_read(&mut self, thread_id: &str) -> bool {
+        let Some(thread) = self.threads.iter_mut().find(|thread| thread.id == thread_id) else {
+            return false;
+        };
+        for message in &mut thread.messages {
+            message.unread = false;
+        }
+        true
     }
 }
 

@@ -26,6 +26,22 @@ function whoLine(message, mailboxId) {
   return name + ' · ' + email;
 }
 
+function guessHosts(email) {
+  const domain = (email.split('@')[1] || '').toLowerCase();
+  const known = {
+    'gmail.com': ['imap.gmail.com', 'smtp.gmail.com'],
+    'googlemail.com': ['imap.gmail.com', 'smtp.gmail.com'],
+    'outlook.com': ['outlook.office365.com', 'smtp.office365.com'],
+    'hotmail.com': ['outlook.office365.com', 'smtp.office365.com'],
+    'live.com': ['outlook.office365.com', 'smtp.office365.com'],
+    'yahoo.com': ['imap.mail.yahoo.com', 'smtp.mail.yahoo.com'],
+    'icloud.com': ['imap.mail.me.com', 'smtp.mail.me.com'],
+    'me.com': ['imap.mail.me.com', 'smtp.mail.me.com'],
+  };
+  const pair = known[domain] || [`imap.${domain}`, `smtp.${domain}`];
+  return { imapHost: pair[0], imapPort: '993', smtpHost: pair[1], smtpPort: '587' };
+}
+
 export default function App() {
   const [mailboxes, setMailboxes] = useState([]);
   const [mailboxId, setMailboxId] = useState('inbox');
@@ -33,19 +49,42 @@ export default function App() {
   const [threadId, setThreadId] = useState('');
   const [detail, setDetail] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  const [offline, setOffline] = useState(false);
   const [problem, setProblem] = useState('');
   const [compose, setCompose] = useState(false);
   const [draft, setDraft] = useState({ to: '', subject: '', body: '' });
   const [sending, setSending] = useState(false);
+  const [mode, setMode] = useState('demo');
+  const [email, setEmail] = useState('');
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [query, setQuery] = useState('');
+  const [signIn, setSignIn] = useState({
+    email: '',
+    password: '',
+    name: '',
+    imapHost: '',
+    imapPort: '993',
+    smtpHost: '',
+    smtpPort: '587',
+  });
 
   useEffect(() => {
     let gone = false;
+    getJson('/api/status')
+      .then((status) => {
+        if (gone) return;
+        setMode(status.mode || 'demo');
+        setEmail(status.email || '');
+        if (status.error) setProblem(status.error);
+      })
+      .catch(() => {});
     getJson('/api/mailboxes')
       .then((rows) => {
         if (!gone) setMailboxes(rows);
       })
       .catch(() => {
-        if (!gone) setProblem('Can’t reach the mail store. Start oru serve.');
+        if (!gone) setOffline(true);
       });
     return () => {
       gone = true;
@@ -88,9 +127,41 @@ export default function App() {
     };
   }, [threadId]);
 
+  useEffect(() => {
+    if (!detail || detail.id !== threadId || !detail.unread) return;
+    let gone = false;
+    getJson('/api/threads/' + encodeURIComponent(threadId) + '/read', { method: 'POST' })
+      .then(() => {
+        if (gone) return;
+        setThreads((rows) => rows.map((row) => (row.id === threadId ? { ...row, unread: false } : row)));
+        setDetail((row) =>
+          row && row.id === threadId
+            ? { ...row, unread: false, messages: row.messages.map((message) => ({ ...message, unread: false })) }
+            : row
+        );
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [detail, threadId]);
+
   function openMailbox(id) {
     setCompose(false);
+    setAccountOpen(false);
     setMailboxId(id);
+  }
+
+  async function reload(nextMailbox) {
+    const boxes = await getJson('/api/mailboxes');
+    setMailboxes(boxes);
+    const preferred = nextMailbox || mailboxId;
+    const box = boxes.some((item) => item.id === preferred) ? preferred : boxes[0] ? boxes[0].id : 'inbox';
+    if (box !== mailboxId) setMailboxId(box);
+    const rows = await getJson('/api/mailboxes/' + encodeURIComponent(box) + '/threads');
+    setThreads(rows);
+    setLoaded(true);
+    setThreadId(rows[0] ? rows[0].id : '');
   }
 
   async function submit(event) {
@@ -117,26 +188,83 @@ export default function App() {
     }
   }
 
-  if (problem && mailboxes.length === 0) {
+  async function signInSubmit(event) {
+    event.preventDefault();
+    setSyncing(true);
+    setProblem('');
+    try {
+      const status = await getJson('/api/account', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(signIn),
+      });
+      setMode(status.mode || 'account');
+      setEmail(status.email || signIn.email);
+      setAccountOpen(false);
+      if (status.error) setProblem(status.error);
+      await reload('inbox');
+    } catch (error) {
+      setProblem(error.message);
+      try {
+        await reload('inbox');
+      } catch {
+        /* the banner already explains the failure */
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function syncNow() {
+    setSyncing(true);
+    setProblem('');
+    try {
+      const status = await getJson('/api/sync', { method: 'POST' });
+      setMode(status.mode || mode);
+      setEmail(status.email || email);
+      if (status.error) setProblem(status.error);
+      await reload();
+    } catch (error) {
+      setProblem(error.message);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  if (offline) {
     return (
       <div className="offline">
         <p className="mark-name">Oru</p>
-        <p>{problem}</p>
+        <p>Can’t reach the mail store. Start oru serve.</p>
       </div>
     );
   }
 
-  const selected = threads.find((thread) => thread.id === threadId) || null;
+  const needle = query.trim().toLowerCase();
+  const shown = threads.filter((thread) => {
+    if (!needle) return true;
+    const hay = [thread.from, thread.to, thread.subject, thread.preview].join(' ').toLowerCase();
+    return hay.includes(needle);
+  });
+  const selected = shown.find((thread) => thread.id === threadId) || threads.find((thread) => thread.id === threadId) || null;
   const open = detail && detail.id === threadId ? detail : null;
+  const panel = compose || accountOpen;
 
   return (
-    <div className={compose ? 'app composing' : 'app'}>
+    <div className={panel ? 'app composing' : 'app'}>
       <aside className="rail">
         <div className="brand">
           <p className="mark-name">Oru</p>
-          <p className="account">you@oru.test</p>
+          <p className="account">{mode === 'account' ? email : 'Sample mailbox'}</p>
         </div>
-        <button className="compose" type="button" onClick={() => setCompose(true)}>
+        <button
+          className="compose"
+          type="button"
+          onClick={() => {
+            setAccountOpen(false);
+            setCompose(true);
+          }}
+        >
           Compose
         </button>
         <nav>
@@ -151,20 +279,44 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <div className="rail-foot">
+          {mode === 'account' ? (
+            <button className="box" type="button" onClick={syncNow} disabled={syncing}>
+              {syncing ? 'Syncing…' : 'Sync'}
+            </button>
+          ) : null}
+          <button
+            className="box"
+            type="button"
+            onClick={() => {
+              setCompose(false);
+              setAccountOpen(true);
+            }}
+          >
+            {mode === 'account' ? 'Account' : 'Sign in'}
+          </button>
+        </div>
       </aside>
       <section className="list">
+        <input
+          className="search"
+          placeholder="Search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
         {!loaded ? (
           <p className="empty">Loading…</p>
-        ) : threads.length === 0 ? (
-          <p className="empty">Nothing in this box.</p>
+        ) : shown.length === 0 ? (
+          <p className="empty">{needle ? 'Nothing matches.' : 'Nothing in this box.'}</p>
         ) : (
-          threads.map((thread) => (
+          shown.map((thread) => (
             <button
               key={thread.id}
               type="button"
               className={selected && selected.id === thread.id ? 'row on' : 'row'}
               onClick={() => {
                 setCompose(false);
+                setAccountOpen(false);
                 setThreadId(thread.id);
               }}
             >
@@ -184,7 +336,70 @@ export default function App() {
       </section>
       <article className="read">
         {problem ? <p className="problem">{problem}</p> : null}
-        {compose ? (
+        {accountOpen ? (
+          <form className="form" onSubmit={signInSubmit}>
+            <h1>Sign in</h1>
+            <p className="note">
+              Gmail and Outlook need an app password. It stays in the account file on this computer.
+            </p>
+            <label>
+              Email
+              <input
+                autoFocus
+                value={signIn.email}
+                onChange={(event) => setSignIn({ ...signIn, email: event.target.value })}
+                onBlur={() => {
+                  if (!signIn.email.includes('@') || signIn.imapHost) return;
+                  setSignIn({ ...signIn, ...guessHosts(signIn.email) });
+                }}
+              />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={signIn.password}
+                onChange={(event) => setSignIn({ ...signIn, password: event.target.value })}
+              />
+            </label>
+            <label>
+              IMAP host
+              <input
+                value={signIn.imapHost}
+                onChange={(event) => setSignIn({ ...signIn, imapHost: event.target.value })}
+              />
+            </label>
+            <label>
+              IMAP port
+              <input
+                value={signIn.imapPort}
+                onChange={(event) => setSignIn({ ...signIn, imapPort: event.target.value })}
+              />
+            </label>
+            <label>
+              SMTP host
+              <input
+                value={signIn.smtpHost}
+                onChange={(event) => setSignIn({ ...signIn, smtpHost: event.target.value })}
+              />
+            </label>
+            <label>
+              SMTP port
+              <input
+                value={signIn.smtpPort}
+                onChange={(event) => setSignIn({ ...signIn, smtpPort: event.target.value })}
+              />
+            </label>
+            <div className="actions">
+              <button className="send" type="submit" disabled={syncing}>
+                {syncing ? 'Signing in…' : 'Sign in'}
+              </button>
+              <button className="ghost" type="button" onClick={() => setAccountOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : compose ? (
           <form className="form" onSubmit={submit}>
             <h1>New message</h1>
             <label>
@@ -221,16 +436,18 @@ export default function App() {
         ) : selected ? (
           <>
             <h1>{(open || selected).subject}</h1>
-            {open ? open.messages.map((message) => (
-              <div key={message.id}>
-                <p className="who">{whoLine(message, mailboxId)}</p>
-                <div className="sheet">
-                  {message.body.split('\n').map((line, index) => (
-                    <p key={message.id + '-' + index}>{line || '\u00a0'}</p>
-                  ))}
+            {open ? (
+              open.messages.map((message) => (
+                <div key={message.id}>
+                  <p className="who">{whoLine(message, mailboxId)}</p>
+                  <div className="sheet">
+                    {message.body.split('\n').map((line, index) => (
+                      <p key={message.id + '-' + index}>{line || '\u00a0'}</p>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )) : (
+              ))
+            ) : (
               <p className="empty">Loading…</p>
             )}
             {open ? (
@@ -243,6 +460,7 @@ export default function App() {
                       subject: open.subject.startsWith('Re:') ? open.subject : 'Re: ' + open.subject,
                       body: '',
                     });
+                    setAccountOpen(false);
                     setCompose(true);
                   }}
                 >

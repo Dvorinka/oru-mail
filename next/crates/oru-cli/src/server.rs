@@ -5,6 +5,7 @@
 //! that window's process alive until the user closes it. Without the profile, Edge
 //! hands `--app` to an already running browser and the spawned process exits.
 
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
@@ -14,7 +15,10 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-use oru_core::{error_json, mailboxes_json, parse_outbound, render_thread, thread_json, threads_json, MemoryStore};
+use oru_core::{
+    account_json, error_json, json_string, mailboxes_json, parse_account, parse_outbound, raw_message, render_thread,
+    thread_json, threads_json, Account, Address, MemoryStore, Synced,
+};
 
 const FALLBACK: &str = r#"<!doctype html>
 <html lang="en"><meta charset="utf-8"><title>Oru</title>
@@ -66,7 +70,7 @@ impl Reply {
 pub fn serve(opts: Opts) -> std::io::Result<()> {
     let listener = bind(&opts)?;
     let ui = resolve_ui(opts.ui);
-    serve_on(listener, MemoryStore::demo(), ui);
+    serve_on(listener, Hub::boot(), ui);
     Ok(())
 }
 
@@ -74,7 +78,7 @@ pub fn desktop(opts: Opts) -> std::io::Result<()> {
     let listener = bind(&opts)?;
     let port = listener.local_addr()?.port();
     let ui = resolve_ui(opts.ui);
-    thread::spawn(move || serve_on(listener, MemoryStore::demo(), ui));
+    thread::spawn(move || serve_on(listener, Hub::boot(), ui));
     let url = format!("http://127.0.0.1:{port}/");
     wait_until_open(port);
     let Some(browser) = find_browser() else {
@@ -105,7 +109,68 @@ fn bind(opts: &Opts) -> std::io::Result<TcpListener> {
     Ok(listener)
 }
 
-fn serve_on(listener: TcpListener, mut store: MemoryStore, ui: Option<PathBuf>) {
+struct Hub {
+    store: MemoryStore,
+    account: Option<Account>,
+    names: HashMap<String, String>,
+    sent_mailbox: String,
+    last_error: String,
+}
+
+impl Hub {
+    fn demo() -> Self {
+        Self {
+            store: MemoryStore::demo(),
+            account: None,
+            names: HashMap::new(),
+            sent_mailbox: "Sent".into(),
+            last_error: String::new(),
+        }
+    }
+
+    fn boot() -> Self {
+        match read_account() {
+            Ok(Some(account)) => signed_in(account),
+            Ok(None) => Self::demo(),
+            Err(error) => {
+                eprintln!("{error}");
+                let mut hub = Self::demo();
+                hub.last_error = error;
+                hub
+            }
+        }
+    }
+
+    fn apply_sync(&mut self, account: Account, synced: Synced) {
+        self.names = synced.names.into_iter().collect();
+        self.sent_mailbox = synced.sent_mailbox;
+        self.store = synced.store;
+        self.account = Some(account);
+        self.last_error.clear();
+    }
+}
+
+fn signed_in(account: Account) -> Hub {
+    match crate::net::sync(&account) {
+        Ok(synced) => {
+            let mut hub = Hub::demo();
+            hub.apply_sync(account, synced);
+            hub
+        }
+        Err(error) => {
+            eprintln!("sync: {error}");
+            Hub {
+                store: MemoryStore::new(),
+                account: Some(account),
+                names: HashMap::new(),
+                sent_mailbox: "Sent".into(),
+                last_error: error,
+            }
+        }
+    }
+}
+
+fn serve_on(listener: TcpListener, mut hub: Hub, ui: Option<PathBuf>) {
     for conn in listener.incoming() {
         let Ok(mut stream) = conn else {
             continue;
@@ -113,35 +178,158 @@ fn serve_on(listener: TcpListener, mut store: MemoryStore, ui: Option<PathBuf>) 
         let Some((method, path, body)) = read_request(&mut stream) else {
             continue;
         };
-        let reply = handle(&mut store, &method, &path, &body, ui.as_deref());
+        let reply = handle(&mut hub, &method, &path, &body, ui.as_deref());
         let _ = stream.write_all(&encode(&reply));
     }
 }
 
-fn handle(store: &mut MemoryStore, method: &str, path: &str, body: &str, ui: Option<&Path>) -> Reply {
+fn handle(hub: &mut Hub, method: &str, path: &str, body: &str, ui: Option<&Path>) -> Reply {
     if method == "OPTIONS" {
         return Reply::empty(204);
     }
     let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
     match (method, parts.as_slice()) {
-        ("GET", ["api", "mailboxes"]) => Reply::json(200, mailboxes_json(store)),
+        ("GET", ["api", "status"]) => Reply::json(200, status_json(hub)),
+        ("GET", ["api", "mailboxes"]) => Reply::json(200, mailboxes_json(&hub.store)),
         ("GET", ["api", "mailboxes", id, "threads"]) if safe_id(id) => {
-            Reply::json(200, threads_json(store, id))
+            Reply::json(200, threads_json(&hub.store, id))
         }
-        ("GET", ["api", "threads", id]) if safe_id(id) => match thread_json(store, id) {
+        ("GET", ["api", "threads", id]) if safe_id(id) => match thread_json(&hub.store, id) {
             Some(document) => Reply::json(200, document),
             None => Reply::json(404, error_json("no such thread")),
         },
-        ("POST", ["api", "messages"]) => match parse_outbound(body) {
-            Ok(message) => {
-                let thread = store.send(&message.to, &message.subject, &message.body);
-                Reply::json(201, render_thread(&thread))
-            }
-            Err(reason) => Reply::json(400, error_json(reason)),
-        },
+        ("POST", ["api", "threads", id, "read"]) if safe_id(id) => mark_read(hub, id),
+        ("POST", ["api", "sync"]) => refresh(hub),
+        ("POST", ["api", "account"]) => save_and_sync(hub, body),
+        ("POST", ["api", "messages"]) => send_message(hub, body),
         ("GET", _) => serve_file(path, ui),
         _ => Reply::json(405, error_json("method not allowed")),
     }
+}
+
+fn status_json(hub: &Hub) -> String {
+    let mode = if hub.account.is_some() { "account" } else { "demo" };
+    let email = hub.account.as_ref().map(|account| account.email.as_str()).unwrap_or("");
+    format!(
+        "{{\"mode\":{},\"email\":{},\"error\":{}}}",
+        json_string(mode),
+        json_string(email),
+        json_string(&hub.last_error)
+    )
+}
+
+fn save_and_sync(hub: &mut Hub, body: &str) -> Reply {
+    let account = match parse_account(body) {
+        Ok(account) => account,
+        Err(reason) => return Reply::json(400, error_json(reason)),
+    };
+    if let Err(error) = write_account(&account) {
+        return Reply::json(500, error_json(&error));
+    }
+    match crate::net::sync(&account) {
+        Ok(synced) => {
+            hub.apply_sync(account, synced);
+            Reply::json(200, status_json(hub))
+        }
+        Err(error) => {
+            hub.store = MemoryStore::new();
+            hub.names.clear();
+            hub.account = Some(account);
+            hub.last_error = error.clone();
+            Reply::json(502, error_json(&error))
+        }
+    }
+}
+
+fn refresh(hub: &mut Hub) -> Reply {
+    let Some(account) = hub.account.clone() else {
+        return Reply::json(400, error_json("sign in first"));
+    };
+    match crate::net::sync(&account) {
+        Ok(synced) => {
+            hub.apply_sync(account, synced);
+            Reply::json(200, status_json(hub))
+        }
+        Err(error) => {
+            hub.last_error = error.clone();
+            Reply::json(502, error_json(&error))
+        }
+    }
+}
+
+fn mark_read(hub: &mut Hub, id: &str) -> Reply {
+    if !hub.store.mark_read(id) {
+        return Reply::json(404, error_json("no such thread"));
+    }
+    if let Some(account) = hub.account.clone() {
+        if let Some((mailbox_id, uid)) = id.split_once(':') {
+            if let Some(imap_name) = hub.names.get(mailbox_id).cloned() {
+                if let Err(error) = crate::net::mark_seen(&account, &imap_name, uid) {
+                    hub.last_error = error;
+                }
+            }
+        }
+    }
+    match thread_json(&hub.store, id) {
+        Some(document) => Reply::json(200, document),
+        None => Reply::json(404, error_json("no such thread")),
+    }
+}
+
+fn send_message(hub: &mut Hub, body: &str) -> Reply {
+    let message = match parse_outbound(body) {
+        Ok(message) => message,
+        Err(reason) => return Reply::json(400, error_json(reason)),
+    };
+    let Some(account) = hub.account.clone() else {
+        let thread = hub.store.send(&message.to, &message.subject, &message.body);
+        return Reply::json(201, render_thread(&thread));
+    };
+    let raw = raw_message(&account.name, &account.email, &message.to, &message.subject, &message.body);
+    if let Err(error) = crate::net::submit(&account, &message.to, &raw) {
+        hub.last_error = error.clone();
+        return Reply::json(502, error_json(&error));
+    }
+    let mailbox = hub.sent_mailbox.clone();
+    if let Err(error) = crate::net::file_sent(&account, &mailbox, &raw) {
+        hub.last_error = format!("Sent, but the server did not keep a copy: {error}");
+    }
+    let thread = hub
+        .store
+        .deliver(Address::new(&account.name, &account.email), &message.to, &message.subject, &message.body);
+    Reply::json(201, render_thread(&thread))
+}
+
+fn read_account() -> Result<Option<Account>, String> {
+    let path = account_path();
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
+    parse_account(&text).map(Some).map_err(|error| error.to_string())
+}
+
+fn write_account(account: &Account) -> Result<(), String> {
+    let path = account_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    fs::write(path, account_json(account)).map_err(|error| error.to_string())
+}
+
+fn account_path() -> PathBuf {
+    if let Some(path) = env::var_os("ORU_ACCOUNT") {
+        return PathBuf::from(path);
+    }
+    if cfg!(windows) {
+        if let Some(dir) = env::var_os("APPDATA") {
+            return PathBuf::from(dir).join("Oru").join("account.json");
+        }
+    }
+    if let Some(home) = env::var_os("HOME") {
+        return PathBuf::from(home).join(".config").join("oru").join("account.json");
+    }
+    PathBuf::from("account.json")
 }
 
 fn serve_file(path: &str, ui: Option<&Path>) -> Reply {
@@ -211,7 +399,12 @@ fn content_type(path: &Path) -> &'static str {
 }
 
 fn safe_id(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    !id.is_empty()
+        && id.len() < 200
+        && !id.contains("..")
+        && id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | ':' | '.'))
 }
 
 fn read_request(stream: &mut TcpStream) -> Option<(String, String, String)> {
@@ -398,13 +591,13 @@ mod tests {
 
     #[test]
     fn routes_mail_and_rejects_parent_paths() {
-        let mut store = MemoryStore::demo();
-        let boxes = handle(&mut store, "GET", "/api/mailboxes", "", None);
+        let mut hub = Hub::demo();
+        let boxes = handle(&mut hub, "GET", "/api/mailboxes", "", None);
         assert_eq!(boxes.status, 200);
         assert!(std::str::from_utf8(&boxes.body).unwrap().contains("Inbox"));
 
         let created = handle(
-            &mut store,
+            &mut hub,
             "POST",
             "/api/messages",
             r#"{"to":"ada@studio.test","subject":"Fold","body":"Lime"}"#,
@@ -413,22 +606,46 @@ mod tests {
         assert_eq!(created.status, 201);
         let document = std::str::from_utf8(&created.body).unwrap();
         assert!(document.contains("Fold"));
-        assert!(store.threads("sent").iter().any(|thread| thread.subject == "Fold"));
+        assert!(hub.store.threads("sent").iter().any(|thread| thread.subject == "Fold"));
 
-        let missing = handle(&mut store, "GET", "/api/threads/missing", "", None);
+        let missing = handle(&mut hub, "GET", "/api/threads/missing", "", None);
         assert_eq!(missing.status, 404);
-        let blocked = handle(&mut store, "GET", "/../Cargo.toml", "", None);
+        let blocked = handle(&mut hub, "GET", "/../Cargo.toml", "", None);
         assert_eq!(blocked.status, 404);
 
         let dir = env::temp_dir().join(format!("oru-ui-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("index.html"), "<h1>Oru</h1>").unwrap();
-        let page = handle(&mut store, "GET", "/", "", Some(&dir));
+        let page = handle(&mut hub, "GET", "/", "", Some(&dir));
         assert_eq!(page.status, 200);
         assert!(std::str::from_utf8(&page.body).unwrap().contains("Oru"));
-        let escape = handle(&mut store, "GET", "/../Cargo.toml", "", Some(&dir));
+        let escape = handle(&mut hub, "GET", "/../Cargo.toml", "", Some(&dir));
         assert_eq!(escape.status, 404);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn demo_status_read_and_sync_stay_offline() {
+        let mut hub = Hub::demo();
+        let status = handle(&mut hub, "GET", "/api/status", "", None);
+        let text = std::str::from_utf8(&status.body).unwrap();
+        assert_eq!(status.status, 200);
+        assert!(text.contains("\"mode\":\"demo\""));
+        assert!(!text.to_ascii_lowercase().contains("password"));
+
+        let before = handle(&mut hub, "GET", "/api/threads/t1", "", None);
+        assert!(std::str::from_utf8(&before.body).unwrap().contains("\"unread\":true"));
+        let read = handle(&mut hub, "POST", "/api/threads/t1/read", "", None);
+        assert_eq!(read.status, 200);
+        let after = std::str::from_utf8(&read.body).unwrap();
+        assert!(!after.contains("\"unread\":true"));
+        assert!(after.contains("\"unread\":false"));
+
+        let sync = handle(&mut hub, "POST", "/api/sync", "", None);
+        assert_eq!(sync.status, 400);
+        let bad = handle(&mut hub, "POST", "/api/account", "{}", None);
+        assert_eq!(bad.status, 400);
+        assert!(hub.account.is_none());
     }
 
     #[test]
@@ -442,7 +659,7 @@ mod tests {
     fn serves_mailboxes_over_http() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        thread::spawn(move || serve_on(listener, MemoryStore::demo(), None));
+        thread::spawn(move || serve_on(listener, Hub::demo(), None));
         let mut text = String::new();
         for _ in 0..50 {
             thread::sleep(Duration::from_millis(20));

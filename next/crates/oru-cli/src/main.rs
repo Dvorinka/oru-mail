@@ -4,6 +4,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod net;
 mod server;
 
 fn main() -> ExitCode {
@@ -96,6 +97,7 @@ oru serve [--host 127.0.0.1] [--port 8787] [--ui ui/dist]
 oru desktop [--port 8787] [--ui ui/dist]
 
 serve   API and web UI. Phones use the same page under 800px.
-desktop A window on Windows or Linux (Edge or Chrome app mode)."
+desktop A window on Windows or Linux (Edge or Chrome app mode).
+        Sign-in is saved in the account file (APPDATA\\Oru or ~/.config/oru)."
     );
 }

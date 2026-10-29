@@ -15,7 +15,7 @@ impl Address {
 }
 
 /// Where a thread is filed. Custom is a user folder.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MailboxRole {
     Inbox,
     Sent,

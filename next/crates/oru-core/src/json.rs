@@ -221,6 +221,12 @@ fn field(out: &mut String, name: &str, value: &str) {
     push_string(out, value);
 }
 
+pub fn json_string(value: &str) -> String {
+    let mut out = String::new();
+    push_string(&mut out, value);
+    out
+}
+
 fn push_string(out: &mut String, value: &str) {
     out.push('"');
     for ch in value.chars() {
@@ -292,6 +298,69 @@ fn parse_string(bytes: &[u8], index: &mut usize) -> Result<String, &'static str>
         }
     }
     Err("unterminated string")
+}
+
+/// One JSON object whose values are strings or numbers. Nested values are rejected.
+pub fn parse_flat(input: &str) -> Result<Vec<(String, String)>, &'static str> {
+    let bytes = input.as_bytes();
+    let mut index = 0;
+    skip_ws(bytes, &mut index);
+    if index >= bytes.len() || bytes[index] != b'{' {
+        return Err("expected an object");
+    }
+    index += 1;
+    let mut pairs = Vec::new();
+    loop {
+        skip_ws(bytes, &mut index);
+        if index < bytes.len() && bytes[index] == b'}' {
+            index += 1;
+            break;
+        }
+        let key = parse_string(bytes, &mut index)?;
+        skip_ws(bytes, &mut index);
+        if index >= bytes.len() || bytes[index] != b':' {
+            return Err("expected a colon");
+        }
+        index += 1;
+        skip_ws(bytes, &mut index);
+        let value = if index < bytes.len() && bytes[index] == b'"' {
+            parse_string(bytes, &mut index)?
+        } else {
+            parse_number(bytes, &mut index)?
+        };
+        pairs.push((key, value));
+        skip_ws(bytes, &mut index);
+        if index < bytes.len() && bytes[index] == b',' {
+            index += 1;
+            continue;
+        }
+        if index < bytes.len() && bytes[index] == b'}' {
+            index += 1;
+            break;
+        }
+        return Err("expected a comma");
+    }
+    skip_ws(bytes, &mut index);
+    if index != bytes.len() {
+        return Err("trailing data");
+    }
+    Ok(pairs)
+}
+
+fn parse_number(bytes: &[u8], index: &mut usize) -> Result<String, &'static str> {
+    let start = *index;
+    if *index < bytes.len() && (bytes[*index] == b'-' || bytes[*index] == b'+') {
+        *index += 1;
+    }
+    let digits = *index;
+    while *index < bytes.len() && bytes[*index].is_ascii_digit() {
+        *index += 1;
+    }
+    if *index == digits {
+        return Err("expected a string");
+    }
+    let text = std::str::from_utf8(&bytes[start..*index]).map_err(|_| "bad utf-8")?;
+    Ok(text.to_string())
 }
 
 #[cfg(test)]

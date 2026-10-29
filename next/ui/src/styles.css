@@ -43,7 +43,8 @@ button, input { font: inherit; }
   cursor: pointer;
 }
 
-.rail nav { display: flex; flex-direction: column; }
+.rail nav { display: flex; flex-direction: column; flex: 1; }
+.rail-foot { display: flex; flex-direction: column; }
 
 .box {
   text-align: left;
@@ -66,6 +67,17 @@ button, input { font: inherit; }
   border-right: 1px solid var(--line);
   overflow: auto;
 }
+
+.search {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  padding: 10px 12px;
+}
+
+.note { margin: 0; color: #5e5b55; font-size: 13px; line-height: 1.4; }
 
 .row {
   width: 100%;
