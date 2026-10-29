@@ -1,6 +1,6 @@
 # Oru next
 
-The rewrite. The Electron app in `../app` stays until this shell replaces it. The shell can switch to the dark canvas. The message sheet stays white, and compose stays the lime fill.
+The rewrite. The Electron app in `../app` stays until this shell replaces it. The shell can switch to the dark canvas. The message sheet stays white, and compose stays the lime fill. j and k move the selection, Enter opens it, c composes, r replies, e archives, and # trashes. Those keys do nothing while a field is focused.
 
 | Piece | Role |
 |---|---|

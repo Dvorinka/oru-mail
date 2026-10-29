@@ -554,6 +554,56 @@ export default function App() {
     }
   }
 
+  useEffect(() => {
+    // The list is what j and k walk. A field keeps the key, so compose and search still type.
+    function onKey(event) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (target && target.closest && target.closest('input, textarea, select')) return;
+      if (target && target.isContentEditable) return;
+      const key = event.key;
+      if (key === 'j' || key === 'ArrowDown' || key === 'k' || key === 'ArrowUp') {
+        event.preventDefault();
+        const down = key === 'j' || key === 'ArrowDown';
+        const index = threads.findIndex((thread) => thread.id === threadId);
+        const next = threads[index + (down ? 1 : -1)];
+        if (next) setThreadId(next.id);
+        return;
+      }
+      if (key === 'Enter') {
+        event.preventDefault();
+        setCompose(false);
+        setAccountOpen(false);
+        const read = document.querySelector('.read');
+        if (read) {
+          read.scrollTop = 0;
+          read.focus();
+        }
+        return;
+      }
+      if (key === 'c') {
+        event.preventDefault();
+        setAccountOpen(false);
+        setDraft(emptyDraft);
+        setCompose(true);
+        return;
+      }
+      if (key === 'r') {
+        if (!detail || detail.id !== threadId) return;
+        event.preventDefault();
+        replyTo(detail);
+        return;
+      }
+      if (key === 'e' || key === '#') {
+        if (!threadId) return;
+        event.preventDefault();
+        changeThread(key === '#' ? 'trash' : 'archive');
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [threads, threadId, detail, mailboxId]);
+
   async function syncNow() {
     setSyncing(true);
     setProblem('');
@@ -695,7 +745,7 @@ export default function App() {
         ) : null}
         {olderNote ? <p className="empty">{olderNote}</p> : null}
       </section>
-      <article className="read">
+      <article className="read" tabIndex={-1}>
         {problem ? <p className="problem">{problem}</p> : null}
         {accountOpen ? (
           <form className="form" onSubmit={signInSubmit}>
