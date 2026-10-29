@@ -18,7 +18,7 @@ use std::time::Duration;
 use oru_core::{
     account_json, error_json, json_string, mailboxes_json, parse_account, parse_draft, parse_outbound, raw_message,
     render_thread,
-    thread_json, threads_json, Account, Address, MailStore, MailboxRole, MemoryStore, Synced,
+    thread_json, thread_list_json, threads_json, Account, Address, MailStore, MailboxRole, MemoryStore, Synced,
 };
 
 const FALLBACK: &str = r#"<!doctype html>
@@ -213,6 +213,7 @@ fn handle(hub: &mut Hub, method: &str, path: &str, body: &str, ui: Option<&Path>
     match (method, parts.as_slice()) {
         ("GET", ["api", "status"]) => Reply::json(200, status_json(hub)),
         ("GET", ["api", "mailboxes"]) => Reply::json(200, mailboxes_json(&hub.store)),
+        ("GET", ["api", "starred"]) => Reply::json(200, thread_list_json(&hub.store.starred_threads())),
         ("GET", ["api", "mailboxes", id, "threads"]) if safe_id(id) => {
             Reply::json(200, threads_json(&hub.store, id))
         }
@@ -875,6 +876,11 @@ mod tests {
         let starred = handle(&mut hub, "POST", "/api/threads/t2/star", "", None);
         assert_eq!(starred.status, 200);
         assert!(std::str::from_utf8(&starred.body).unwrap().contains("\"starred\":true"));
+        let flagged = handle(&mut hub, "GET", "/api/starred", "", None);
+        assert_eq!(flagged.status, 200);
+        let flagged_text = std::str::from_utf8(&flagged.body).unwrap();
+        assert!(flagged_text.contains("Shipment"));
+        assert!(!flagged_text.contains("Studio notes"));
         let cleared = handle(&mut hub, "POST", "/api/threads/t2/star", "", None);
         assert_eq!(cleared.status, 200);
         assert!(std::str::from_utf8(&cleared.body).unwrap().contains("\"starred\":false"));

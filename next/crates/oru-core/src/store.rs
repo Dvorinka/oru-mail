@@ -260,6 +260,13 @@ impl MemoryStore {
         self.threads.len() != before
     }
 
+    /// Starred threads from every mailbox, newest first.
+    pub fn starred_threads(&self) -> Vec<Thread> {
+        let mut found: Vec<Thread> = self.threads.iter().filter(|thread| thread.starred()).cloned().collect();
+        by_newest(&mut found);
+        found
+    }
+
     pub fn attachment(&self, id: &str) -> Option<&crate::Attachment> {
         let (message_id, index) = id.rsplit_once(':')?;
         let index: usize = index.parse().ok()?;
@@ -267,6 +274,14 @@ impl MemoryStore {
             thread.messages.iter().find(|message| message.id == message_id).and_then(|message| message.attachments.get(index))
         })
     }
+}
+
+fn by_newest(threads: &mut [Thread]) {
+    threads.sort_by(|a, b| {
+        let left = a.latest().map(|message| message.unix_secs).unwrap_or(0);
+        let right = b.latest().map(|message| message.unix_secs).unwrap_or(0);
+        right.cmp(&left)
+    });
 }
 
 fn preview_line(body: &str) -> String {
@@ -297,11 +312,7 @@ impl MailStore for MemoryStore {
             .filter(|thread| thread.mailbox_id == mailbox_id)
             .cloned()
             .collect();
-        found.sort_by(|a, b| {
-            let left = a.latest().map(|message| message.unix_secs).unwrap_or(0);
-            let right = b.latest().map(|message| message.unix_secs).unwrap_or(0);
-            right.cmp(&left)
-        });
+        by_newest(&mut found);
         found
     }
 

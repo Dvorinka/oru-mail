@@ -18,7 +18,8 @@ pub use imap::{
     Synced,
 };
 pub use json::{
-    error_json, json_string, mailboxes_json, parse_draft, parse_outbound, render_thread, thread_json, threads_json,
+    error_json, json_string, mailboxes_json, parse_draft, parse_outbound, render_thread, thread_json, thread_list_json,
+    threads_json,
     Outbound,
 };
 pub use model::{Address, Attachment, Mailbox, MailboxRole, Message, Thread};

@@ -104,7 +104,7 @@ export default function App() {
   useEffect(() => {
     let gone = false;
     setLoaded(false);
-    getJson('/api/mailboxes/' + encodeURIComponent(mailboxId) + '/threads')
+    getJson(mailboxId === 'starred' ? '/api/starred' : '/api/mailboxes/' + encodeURIComponent(mailboxId) + '/threads')
       .then((rows) => {
         if (gone) return;
         setThreads(rows);
@@ -186,6 +186,14 @@ export default function App() {
     const boxes = await getJson('/api/mailboxes');
     setMailboxes(boxes);
     const preferred = nextMailbox || mailboxId;
+    if (preferred === 'starred') {
+      if (mailboxId !== 'starred') setMailboxId('starred');
+      const rows = await getJson('/api/starred');
+      setThreads(rows);
+      setLoaded(true);
+      setThreadId(rows[0] ? rows[0].id : '');
+      return;
+    }
     const box = boxes.some((item) => item.id === preferred) ? preferred : boxes[0] ? boxes[0].id : 'inbox';
     if (box !== mailboxId) setMailboxId(box);
     const rows = await getJson('/api/mailboxes/' + encodeURIComponent(box) + '/threads');
@@ -333,7 +341,11 @@ export default function App() {
       }
       if (kind === 'star') {
         const starred = !!(updated && updated.starred);
-        setThreads((rows) => rows.map((row) => (row.id === threadId ? { ...row, starred } : row)));
+        setThreads((rows) =>
+          mailboxId === 'starred' && !starred
+            ? rows.filter((row) => row.id !== threadId)
+            : rows.map((row) => (row.id === threadId ? { ...row, starred } : row))
+        );
         setDetail((row) => (row && row.id === threadId ? updated : row));
         return;
       }
@@ -431,6 +443,13 @@ export default function App() {
           Compose
         </button>
         <nav>
+          <button
+            type="button"
+            className={mailboxId === 'starred' ? 'box selected' : 'box'}
+            onClick={() => openMailbox('starred')}
+          >
+            Starred
+          </button>
           {mailboxes.map((mailbox) => (
             <button
               key={mailbox.id}
@@ -471,7 +490,9 @@ export default function App() {
         {!loaded ? (
           <p className="empty">Loading…</p>
         ) : shown.length === 0 ? (
-          <p className="empty">{needle ? 'Nothing matches.' : 'Nothing in this box.'}</p>
+          <p className="empty">
+            {needle ? 'Nothing matches.' : mailboxId === 'starred' ? 'Nothing starred.' : 'Nothing in this box.'}
+          </p>
         ) : (
           shown.map((thread) => (
             <button
@@ -501,7 +522,7 @@ export default function App() {
             </button>
           ))
         )}
-        {mode === 'account' ? (
+        {mode === 'account' && mailboxId !== 'starred' ? (
           <button className="older" type="button" onClick={loadOlder} disabled={loadingOlder}>
             {loadingOlder ? 'Loading…' : 'Older'}
           </button>

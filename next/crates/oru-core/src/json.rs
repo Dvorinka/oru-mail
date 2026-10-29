@@ -26,8 +26,12 @@ pub fn mailboxes_json(store: &impl MailStore) -> String {
 }
 
 pub fn threads_json(store: &impl MailStore, mailbox_id: &str) -> String {
+    thread_list_json(&store.threads(mailbox_id))
+}
+
+pub fn thread_list_json(threads: &[Thread]) -> String {
     let mut out = String::from("[");
-    for (index, thread) in store.threads(mailbox_id).iter().enumerate() {
+    for (index, thread) in threads.iter().enumerate() {
         if index > 0 {
             out.push(',');
         }
