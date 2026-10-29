@@ -1,6 +1,6 @@
 # Oru next
 
-The rewrite. The Electron app in `../app` stays until this shell replaces it.
+The rewrite. The Electron app in `../app` stays until this shell replaces it. The shell can switch to the dark canvas. The message sheet stays white, and compose stays the lime fill.
 
 | Piece | Role |
 |---|---|

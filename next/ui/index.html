@@ -8,6 +8,11 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.svg" />
     <title>Oru</title>
+    <script>
+      try {
+        if (localStorage.getItem('oru-theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+      } catch (error) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

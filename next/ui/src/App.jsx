@@ -125,6 +125,13 @@ export default function App() {
   const [olderNote, setOlderNote] = useState('');
   const [query, setQuery] = useState('');
   const [moveTo, setMoveTo] = useState('');
+  const [theme, setTheme] = useState(() => {
+    try {
+      return window.localStorage.getItem('oru-theme') === 'dark' ? 'dark' : 'light';
+    } catch {
+      return 'light';
+    }
+  });
   const [signIn, setSignIn] = useState({
     email: '',
     password: '',
@@ -134,6 +141,15 @@ export default function App() {
     smtpHost: '',
     smtpPort: '587',
   });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      window.localStorage.setItem('oru-theme', theme);
+    } catch {
+      /* a private window can refuse the write; the attribute still applies */
+    }
+  }, [theme]);
 
   useEffect(() => {
     let gone = false;
@@ -609,6 +625,13 @@ export default function App() {
           ))}
         </nav>
         <div className="rail-foot">
+          <button
+            className="box"
+            type="button"
+            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+          >
+            {theme === 'dark' ? 'Light' : 'Dark'}
+          </button>
           {mode === 'account' ? (
             <button className="box" type="button" onClick={syncNow} disabled={syncing}>
               {syncing ? 'Syncing…' : 'Sync'}
