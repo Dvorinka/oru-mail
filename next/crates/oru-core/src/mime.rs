@@ -10,6 +10,8 @@ const MAX_BODY: usize = 200_000;
 pub struct ParsedMail {
     pub from: Address,
     pub to: Vec<Address>,
+    pub cc: Vec<Address>,
+    pub bcc: Vec<Address>,
     pub subject: String,
     pub body: String,
     pub preview: String,
@@ -35,6 +37,8 @@ pub fn parse(raw: &[u8]) -> ParsedMail {
         .next()
         .unwrap_or_else(|| Address::new("", ""));
     let to = parse_address_list(&decode_words(&header(&headers, "to")));
+    let cc = parse_address_list(&decode_words(&header(&headers, "cc")));
+    let bcc = parse_address_list(&decode_words(&header(&headers, "bcc")));
     let message_id = header(&headers, "message-id").trim().trim_matches(|ch| ch == '<' || ch == '>').to_string();
     let references = reference_ids(&header(&headers, "references"), &header(&headers, "in-reply-to"));
     let unix_secs = parse_date(&header(&headers, "date")).unwrap_or(0);
@@ -51,6 +55,8 @@ pub fn parse(raw: &[u8]) -> ParsedMail {
     ParsedMail {
         from,
         to,
+        cc,
+        bcc,
         subject,
         body: text,
         preview,
@@ -778,5 +784,22 @@ VHJhY2tpbmc=\r\n\
         assert_eq!(mail.attachments.len(), 1);
         assert_eq!(mail.attachments[0].name, "invoice.txt");
         assert_eq!(mail.attachments[0].bytes, b"Tracking");
+    }
+
+    #[test]
+    fn lists_cc_and_bcc_beside_every_to() {
+        let raw = "\
+From: Ada <ada@studio.test>\r\n\
+To: Bea <bea@studio.test>, Cam <cam@studio.test>\r\n\
+Cc: Dee <dee@studio.test>\r\n\
+Bcc: Eve <eve@studio.test>\r\n\
+Subject: Copies\r\n\
+\r\n\
+Hi\r\n";
+        let mail = parse(raw.as_bytes());
+        assert_eq!(mail.to.len(), 2);
+        assert_eq!(mail.to[1].email, "cam@studio.test");
+        assert_eq!(mail.cc[0].email, "dee@studio.test");
+        assert_eq!(mail.bcc[0].email, "eve@studio.test");
     }
 }

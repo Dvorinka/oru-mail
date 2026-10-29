@@ -19,6 +19,9 @@ pub struct Outbound {
     pub body: String,
     /// Message-ID this send answers, without brackets. Empty for a new message.
     pub in_reply_to: String,
+    pub tos: Vec<String>,
+    pub cc: Vec<String>,
+    pub bcc: Vec<String>,
     pub file: Option<OutboundFile>,
 }
 
@@ -111,6 +114,8 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
     let mut file_name = None;
     let mut file_mime = None;
     let mut file_data = None;
+    let mut cc = None;
+    let mut bcc = None;
     loop {
         skip_ws(bytes, &mut index);
         if index < bytes.len() && bytes[index] == b'}' {
@@ -130,6 +135,8 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
             "subject" => subject = Some(value),
             "body" => body = Some(value),
             "inReplyTo" => in_reply_to = Some(value),
+            "cc" => cc = Some(value),
+            "bcc" => bcc = Some(value),
             "fileName" => file_name = Some(value),
             "fileMime" => file_mime = Some(value),
             "fileData" => file_data = Some(value),
@@ -151,11 +158,11 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
         return Err("trailing data");
     }
     let to = to.unwrap_or_default().trim().to_string();
+    let tos = email_list(&to, "to")?;
+    let cc = email_list(&cc.unwrap_or_default(), "cc")?;
+    let bcc = email_list(&bcc.unwrap_or_default(), "bcc")?;
     let mut subject = subject.unwrap_or_default().trim().to_string();
-    if !to.is_empty() && (!to.contains('@') || to.contains(char::is_whitespace)) {
-        return Err("to needs an email");
-    }
-    if require_send && !to.contains('@') {
+    if require_send && tos.is_empty() {
         return Err("to needs an email");
     }
     if subject.is_empty() {
@@ -183,8 +190,38 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
         subject,
         body: body.unwrap_or_default(),
         in_reply_to: in_reply_to.unwrap_or_default().trim().trim_matches(|ch| ch == '<' || ch == '>').to_string(),
+        tos,
+        cc,
+        bcc,
         file,
     })
+}
+
+/// Comma-separated addresses. A piece without `@`, or with space or header punctuation, is rejected.
+fn email_list(value: &str, field: &'static str) -> Result<Vec<String>, &'static str> {
+    let mut out = Vec::new();
+    if value.trim().is_empty() {
+        return Ok(out);
+    }
+    for part in value.split(',') {
+        let email = part.trim();
+        if email.is_empty() {
+            continue;
+        }
+        if !email.contains('@')
+            || email.chars().any(|ch| ch.is_whitespace() || matches!(ch, '<' | '>' | '"' | '\\' | ';' | '\r' | '\n'))
+        {
+            return Err(match field {
+                "cc" => "cc needs an email",
+                "bcc" => "bcc needs an email",
+                _ => "to needs an email",
+            });
+        }
+        if !out.iter().any(|have: &String| have == email) {
+            out.push(email.to_string());
+        }
+    }
+    Ok(out)
 }
 
 fn attachment_name(value: &str) -> String {
@@ -287,6 +324,28 @@ fn push_message(out: &mut String, message: &Message) {
     field(out, "to", to);
     out.push(',');
     field(out, "toEmail", to_email);
+    out.push(',');
+    out.push_str("\"recipients\":[");
+    let mut wrote = false;
+    for (kind, people) in [("to", &message.to), ("cc", &message.cc), ("bcc", &message.bcc)] {
+        for address in people {
+            if address.email.is_empty() {
+                continue;
+            }
+            if wrote {
+                out.push(',');
+            }
+            wrote = true;
+            out.push('{');
+            field(out, "name", &address.name);
+            out.push(',');
+            field(out, "email", &address.email);
+            out.push(',');
+            field(out, "kind", kind);
+            out.push('}');
+        }
+    }
+    out.push(']');
     out.push(',');
     field(out, "subject", &message.subject);
     out.push(',');
@@ -531,6 +590,8 @@ mod tests {
                 attachments: Vec::new(),
                 unix_secs: 1,
                 unread: false,
+                cc: Vec::new(),
+                bcc: Vec::new(),
                 starred: false,
             }],
         });
@@ -572,5 +633,35 @@ mod tests {
         assert_eq!(file.name, "invoice.txt");
         assert_eq!(file.bytes, b"Tracking");
         assert!(parse_outbound(r#"{"to":"ada@studio.test","subject":"Fold","body":"","fileData":"!!!!"}"#).is_err());
+        let copied = parse_outbound(
+            r#"{"to":"ada@studio.test, bea@studio.test","cc":"cam@studio.test","bcc":"dee@studio.test","subject":"Hi","body":""}"#,
+        )
+        .unwrap();
+        assert_eq!(copied.tos, vec!["ada@studio.test", "bea@studio.test"]);
+        assert_eq!(copied.cc, vec!["cam@studio.test".to_string()]);
+        assert_eq!(copied.bcc, vec!["dee@studio.test".to_string()]);
+        assert!(parse_outbound(r#"{"to":"ada@studio.test","cc":"not-an-email","subject":"Hi","body":""}"#).is_err());
+    }
+
+    #[test]
+    fn message_lists_every_recipient() {
+        let mut store = MemoryStore::demo();
+        let thread = store.deliver(
+            crate::Address::new("You", "you@oru.test"),
+            &["ada@studio.test".into(), "bea@studio.test".into()],
+            &["cam@studio.test".into()],
+            &["dee@studio.test".into()],
+            "Copies",
+            "All four",
+            None,
+        );
+        let json = thread_json(&store, &thread.id).unwrap();
+        assert!(json.contains("ada@studio.test"));
+        assert!(json.contains("bea@studio.test"));
+        assert!(json.contains("cam@studio.test"));
+        assert!(json.contains("dee@studio.test"));
+        assert!(json.contains("\"kind\":\"to\""));
+        assert!(json.contains("\"kind\":\"cc\""));
+        assert!(json.contains("\"kind\":\"bcc\""));
     }
 }

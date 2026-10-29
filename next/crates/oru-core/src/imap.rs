@@ -798,6 +798,8 @@ fn message_from(slug: &str, item: &Fetched) -> Message {
         } else {
             item.mail.to.clone()
         },
+        cc: item.mail.cc.clone(),
+        bcc: item.mail.bcc.clone(),
         subject: item.mail.subject.clone(),
         preview: item.mail.preview.clone(),
         body: item.mail.body.clone(),
@@ -865,21 +867,26 @@ pub fn decode_utf7(value: &str) -> String {
 }
 
 pub fn raw_message(from_name: &str, from_email: &str, to: &str, subject: &str, body: &str, in_reply_to: &str) -> Vec<u8> {
-    raw_message_attached(from_name, from_email, to, subject, body, in_reply_to, None, None, None)
+    raw_message_attached(from_name, from_email, &[to], subject, body, in_reply_to, None, None, None, &[], &[], false)
 }
 
 /// Same message as [`raw_message`]. A file becomes a second MIME part.
 /// The HTTP download of a stored file stays `application/octet-stream` either way.
+/// Bcc is omitted unless `include_bcc` is set. The copy other people receive leaves it off.
+/// The Sent append sets it so the sender's mailbox still lists every recipient.
 pub fn raw_message_attached(
     from_name: &str,
     from_email: &str,
-    to: &str,
+    to: &[&str],
     subject: &str,
     body: &str,
     in_reply_to: &str,
     file_name: Option<&str>,
     file_mime: Option<&str>,
     file_bytes: Option<&[u8]>,
+    cc: &[&str],
+    bcc: &[&str],
+    include_bcc: bool,
 ) -> Vec<u8> {
     let from = if from_name.is_empty() || from_name == from_email {
         format!("<{from_email}>")
@@ -899,7 +906,12 @@ pub fn raw_message_attached(
         .map(|duration| duration.as_millis())
         .unwrap_or(0);
     let id = format!("oru.{stamp}@oru");
-    let head = format!("From: {from}\r\nTo: <{to}>\r\nSubject: {subject_header}\r\nDate: {date}\r\nMessage-ID: <{id}>\r\n{reply}MIME-Version: 1.0\r\n");
+    let bcc_header = if include_bcc { address_header("Bcc", bcc) } else { String::new() };
+    let head = format!(
+        "From: {from}\r\n{}{}{bcc_header}Subject: {subject_header}\r\nDate: {date}\r\nMessage-ID: <{id}>\r\n{reply}MIME-Version: 1.0\r\n",
+        address_header("To", to),
+        address_header("Cc", cc),
+    );
     let Some(bytes) = file_bytes.filter(|bytes| !bytes.is_empty()) else {
         return format!("{head}Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n{body}\r\n").into_bytes();
     };
@@ -916,6 +928,23 @@ pub fn raw_message_attached(
     ));
     out.push_str(&format!("--{boundary}--\r\n"));
     out.into_bytes()
+}
+
+fn address_header(name: &str, emails: &[&str]) -> String {
+    let list = emails
+        .iter()
+        .copied()
+        .filter(|email| {
+            !email.is_empty() && email.contains('@') && !email.contains(['\r', '\n', '<', '>', '"', ' '])
+        })
+        .map(|email| format!("<{email}>"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if list.is_empty() {
+        String::new()
+    } else {
+        format!("{name}: {list}\r\n")
+    }
 }
 
 fn header_filename(name: &str) -> String {
@@ -1045,19 +1074,56 @@ mod tests {
         let attached = String::from_utf8(raw_message_attached(
             "Ada",
             "ada@studio.test",
-            "you@oru.test",
+            &["you@oru.test"],
             "Studio",
             "Hello",
             "",
             Some("notes/invoice.txt"),
             Some("text/plain"),
             Some(b"Tracking\n"),
+            &[],
+            &[],
+            false,
         ))
         .unwrap();
         assert!(attached.contains("multipart/mixed"));
         assert!(attached.contains("filename=\"invoice.txt\""));
         assert!(attached.contains(&crate::base64::encode(b"Tracking\n")));
         assert!(!attached.contains("notes/invoice.txt"));
+        let hidden = String::from_utf8(raw_message_attached(
+            "Ada",
+            "ada@studio.test",
+            &["bea@studio.test", "cam@studio.test"],
+            "Copies",
+            "Hello",
+            "",
+            None,
+            None,
+            None,
+            &["dee@studio.test"],
+            &["eve@studio.test"],
+            false,
+        ))
+        .unwrap();
+        assert!(hidden.contains("To: <bea@studio.test>, <cam@studio.test>\r\n"));
+        assert!(hidden.contains("Cc: <dee@studio.test>\r\n"));
+        assert!(!hidden.contains("Bcc:"));
+        let filed = String::from_utf8(raw_message_attached(
+            "Ada",
+            "ada@studio.test",
+            &["bea@studio.test"],
+            "Copies",
+            "Hello",
+            "",
+            None,
+            None,
+            None,
+            &["dee@studio.test"],
+            &["eve@studio.test"],
+            true,
+        ))
+        .unwrap();
+        assert!(filed.contains("Bcc: <eve@studio.test>\r\n"));
         assert_eq!(synced.sent_mailbox, "Sent");
         assert!(synced.names.iter().any(|(slug, _)| slug == "inbox"));
         assert!(format_rfc5322(0).contains("01 Jan 1970"));

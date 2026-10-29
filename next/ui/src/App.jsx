@@ -32,6 +32,31 @@ function whoLine(message, mailboxId) {
   return name + ' · ' + email;
 }
 
+function personLabel(row) {
+  const name = row.name || '';
+  const email = row.email || '';
+  if (name && email && name !== email) return name + ' · ' + email;
+  return email || name;
+}
+
+function recipientLine(message) {
+  const rows = Array.isArray(message.recipients) ? message.recipients : [];
+  const labels = { to: 'To', cc: 'Cc', bcc: 'Bcc' };
+  if (rows.length === 0) {
+    const person = personLabel({ name: message.to, email: message.toEmail });
+    return person ? 'To ' + person : '';
+  }
+  const parts = [];
+  for (const kind of ['to', 'cc', 'bcc']) {
+    const people = rows
+      .filter((row) => row.kind === kind)
+      .map(personLabel)
+      .filter(Boolean);
+    if (people.length) parts.push(labels[kind] + ' ' + people.join(', '));
+  }
+  return parts.join(', ');
+}
+
 function listPath(id) {
   return id === 'starred' ? '/api/starred' : '/api/mailboxes/' + encodeURIComponent(id) + '/threads';
 }
@@ -49,7 +74,18 @@ function oldestUid(rows) {
   return oldest;
 }
 
-const emptyDraft = { to: '', subject: '', body: '', inReplyTo: '', kind: '', fileName: '', fileMime: '', fileData: '' };
+const emptyDraft = {
+  to: '',
+  cc: '',
+  bcc: '',
+  subject: '',
+  body: '',
+  inReplyTo: '',
+  kind: '',
+  fileName: '',
+  fileMime: '',
+  fileData: '',
+};
 
 function guessHosts(email) {
   const domain = (email.split('@')[1] || '').toLowerCase();
@@ -269,6 +305,8 @@ export default function App() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           to: draft.to,
+          cc: draft.cc,
+          bcc: draft.bcc,
           subject: draft.subject,
           body: draft.body,
           inReplyTo: draft.inReplyTo,
@@ -298,6 +336,8 @@ export default function App() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           to: draft.to,
+          cc: draft.cc,
+          bcc: draft.bcc,
           subject: draft.subject,
           body: draft.body,
           inReplyTo: draft.inReplyTo,
@@ -671,6 +711,14 @@ export default function App() {
               />
             </label>
             <label>
+              Cc
+              <input value={draft.cc} onChange={(event) => setDraft({ ...draft, cc: event.target.value })} />
+            </label>
+            <label>
+              Bcc
+              <input value={draft.bcc} onChange={(event) => setDraft({ ...draft, bcc: event.target.value })} />
+            </label>
+            <label>
               Subject
               <input
                 value={draft.subject}
@@ -734,6 +782,7 @@ export default function App() {
               open.messages.map((message) => (
                 <div key={message.id}>
                   <p className="who">{whoLine(message, mailboxId)}</p>
+                  {recipientLine(message) ? <p className="who">{recipientLine(message)}</p> : null}
                   <div className="sheet">
                     {message.html ? (
                       <iframe className="html-mail" sandbox="allow-popups" referrerPolicy="no-referrer" title={message.subject || 'Message'} srcDoc={message.html} />

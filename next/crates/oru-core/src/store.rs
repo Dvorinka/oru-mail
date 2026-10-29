@@ -83,6 +83,8 @@ impl MemoryStore {
                 attachments: Vec::new(),
                 unix_secs: 1_730_000_000,
                 unread: true,
+                cc: Vec::new(),
+                bcc: Vec::new(),
                 starred: false,
             }],
         });
@@ -107,6 +109,8 @@ impl MemoryStore {
                 }],
                 unix_secs: 1_729_900_000,
                 unread: false,
+                cc: Vec::new(),
+                bcc: Vec::new(),
                 starred: false,
             }],
         });
@@ -126,6 +130,8 @@ impl MemoryStore {
                 attachments: Vec::new(),
                 unix_secs: 1_729_800_000,
                 unread: false,
+                cc: Vec::new(),
+                bcc: Vec::new(),
                 starred: false,
             }],
         });
@@ -133,7 +139,15 @@ impl MemoryStore {
     }
 
     /// Files a message in Drafts. An empty Drafts mailbox is created when missing.
-    pub fn save_draft(&mut self, to: &str, subject: &str, body: &str, file: Option<crate::Attachment>) -> Thread {
+    pub fn save_draft(
+        &mut self,
+        to: &[String],
+        subject: &str,
+        body: &str,
+        cc: &[String],
+        bcc: &[String],
+        file: Option<crate::Attachment>,
+    ) -> Thread {
         if !self.mailboxes.iter().any(|mailbox| mailbox.role == MailboxRole::Drafts) {
             self.insert_mailbox(Mailbox {
                 id: "drafts".into(),
@@ -158,7 +172,9 @@ impl MemoryStore {
                 id: message_id.clone(),
                 message_id: format!("{message_id}@oru.local"),
                 from: Address::new("You", "you@oru.test"),
-                to: if to.is_empty() { Vec::new() } else { vec![Address::new(to, to)] },
+                to: addresses(to),
+                cc: addresses(cc),
+                bcc: addresses(bcc),
                 subject: subject.to_string(),
                 preview: preview_line(body),
                 body: body.to_string(),
@@ -175,10 +191,19 @@ impl MemoryStore {
 
     /// Files a message in Sent. The id is local to this process.
     pub fn send(&mut self, to: &str, subject: &str, body: &str) -> Thread {
-        self.deliver(Address::new("You", "you@oru.test"), to, subject, body, None)
+        self.deliver(Address::new("You", "you@oru.test"), &[to.to_string()], &[], &[], subject, body, None)
     }
 
-    pub fn deliver(&mut self, from: Address, to: &str, subject: &str, body: &str, file: Option<crate::Attachment>) -> Thread {
+    pub fn deliver(
+        &mut self,
+        from: Address,
+        to: &[String],
+        cc: &[String],
+        bcc: &[String],
+        subject: &str,
+        body: &str,
+        file: Option<crate::Attachment>,
+    ) -> Thread {
         if !self.mailboxes.iter().any(|mailbox| mailbox.id == "sent") {
             self.insert_mailbox(Mailbox {
                 id: "sent".into(),
@@ -198,7 +223,9 @@ impl MemoryStore {
                 id: message_id.clone(),
                 message_id: format!("{message_id}@oru.local"),
                 from,
-                to: vec![Address::new(to, to)],
+                to: addresses(to),
+                cc: addresses(cc),
+                bcc: addresses(bcc),
                 subject: subject.to_string(),
                 preview,
                 body: body.to_string(),
@@ -307,7 +334,7 @@ fn thread_matches(thread: &Thread, needle: &str) -> bool {
     thread.messages.iter().any(|message| {
         message.from.name.to_lowercase().contains(needle)
             || message.from.email.to_lowercase().contains(needle)
-            || message.to.iter().any(|address| {
+            || message.to.iter().chain(message.cc.iter()).chain(message.bcc.iter()).any(|address| {
                 address.name.to_lowercase().contains(needle) || address.email.to_lowercase().contains(needle)
             })
             || message.preview.to_lowercase().contains(needle)
@@ -348,6 +375,10 @@ fn page_matches(threads: Vec<Thread>, before_uid: Option<u32>) -> Vec<Thread> {
     by_newest(&mut bare);
     bare.truncate(40);
     bare
+}
+
+fn addresses(emails: &[String]) -> Vec<Address> {
+    emails.iter().map(|email| Address::new(email.as_str(), email.as_str())).collect()
 }
 
 fn stamp_file(file: Option<crate::Attachment>, message_id: &str) -> Vec<crate::Attachment> {
@@ -435,6 +466,8 @@ mod tests {
                 attachments: Vec::new(),
                 unix_secs: 10,
                 unread: false,
+                cc: Vec::new(),
+                bcc: Vec::new(),
                 starred: false,
             }],
         });
@@ -454,6 +487,8 @@ mod tests {
                 attachments: Vec::new(),
                 unix_secs: 1,
                 unread: false,
+                cc: Vec::new(),
+                bcc: Vec::new(),
                 starred: false,
             }],
         });
@@ -509,6 +544,8 @@ mod tests {
                     attachments: Vec::new(),
                     unix_secs: uid as i64,
                     unread: false,
+                    cc: Vec::new(),
+                    bcc: Vec::new(),
                     starred: false,
                 }],
             });

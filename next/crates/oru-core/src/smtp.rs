@@ -10,7 +10,8 @@ pub struct Outgoing<'a> {
     pub user: &'a str,
     pub password: &'a str,
     pub from_email: &'a str,
-    pub to: &'a str,
+    /// To, Cc, and Bcc. Each one gets its own RCPT TO. The raw message decides which headers they see.
+    pub recipients: &'a [&'a str],
     pub raw: &'a [u8],
 }
 
@@ -41,8 +42,16 @@ pub fn send_mail<S: Read + Write>(stream: &mut S, expect_greeting: bool, mail: &
     if authed.is_err() {
         return Err("smtp login failed".into());
     }
+    if mail.recipients.is_empty() {
+        return Err("smtp needs a recipient".into());
+    }
     command(stream, &format!("MAIL FROM:<{}>", mail.from_email), 250)?;
-    command(stream, &format!("RCPT TO:<{}>", mail.to), 250)?;
+    for recipient in mail.recipients {
+        if !recipient.contains('@') || recipient.contains(['\r', '\n', ' ']) {
+            return Err("smtp recipient".into());
+        }
+        command(stream, &format!("RCPT TO:<{recipient}>"), 250)?;
+    }
     command(stream, "DATA", 354)?;
     write_data(stream, mail.raw)?;
     let queued = read_reply(stream)?;
@@ -145,6 +154,8 @@ mod tests {
             write(&mut stream, b"250 OK\r\n");
             assert!(read_line_raw(&mut stream).contains("RCPT TO:<ada@studio.test>"));
             write(&mut stream, b"250 OK\r\n");
+            assert!(read_line_raw(&mut stream).contains("RCPT TO:<bea@studio.test>"));
+            write(&mut stream, b"250 OK\r\n");
             assert_eq!(read_line_raw(&mut stream).trim(), "DATA");
             write(&mut stream, b"354 go\r\n");
             let mut data = String::new();
@@ -175,7 +186,7 @@ mod tests {
                 user: "ada@studio.test",
                 password: "secret",
                 from_email: "ada@studio.test",
-                to: "ada@studio.test",
+                recipients: &["ada@studio.test", "bea@studio.test"],
                 raw,
             },
         )

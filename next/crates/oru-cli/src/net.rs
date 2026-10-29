@@ -57,13 +57,13 @@ pub fn mark_flagged(account: &Account, mailbox: &str, uid: &str, on: bool) -> Re
     oru_core::set_flagged(&mut stream, &account.email, &account.password, mailbox, uid, on)
 }
 
-pub fn submit(account: &Account, to: &str, raw: &[u8]) -> Result<(), String> {
+pub fn submit(account: &Account, recipients: &[&str], raw: &[u8]) -> Result<(), String> {
     let connector = tls()?;
     let mail = Outgoing {
         user: &account.email,
         password: &account.password,
         from_email: &account.email,
-        to,
+        recipients,
         raw,
     };
     if account.smtp_port == 465 {

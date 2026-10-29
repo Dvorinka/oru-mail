@@ -59,8 +59,10 @@ pub struct Message {
     /// Message-ID without brackets. Reply uses it as In-Reply-To.
     pub message_id: String,
     pub from: Address,
-    /// Recipients. The shell shows the first address.
+    /// Every To address. Cc and Bcc stay separate so the shell can label each one.
     pub to: Vec<Address>,
+    pub cc: Vec<Address>,
+    pub bcc: Vec<Address>,
     pub subject: String,
     pub preview: String,
     pub body: String,

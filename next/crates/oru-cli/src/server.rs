@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use oru_core::{
     account_json, error_json, json_string, mailboxes_json, parse_account, parse_draft, parse_outbound, parse_search,
-    raw_message, raw_message_attached,
+    raw_message_attached,
     render_thread,
     thread_json, thread_list_json, threads_json, Account, Address, Attachment, MailStore, MailboxRole, MemoryStore,
     OutboundFile, Synced,
@@ -501,21 +501,29 @@ fn drafts_name(hub: &Hub) -> String {
         .unwrap_or_else(|| "Drafts".into())
 }
 
-fn compose_raw(name: &str, email: &str, message: &oru_core::Outbound) -> Vec<u8> {
-    match &message.file {
-        Some(file) => raw_message_attached(
-            name,
-            email,
-            &message.to,
-            &message.subject,
-            &message.body,
-            &message.in_reply_to,
-            Some(&file.name),
-            Some(&file.mime),
-            Some(&file.bytes),
-        ),
-        None => raw_message(name, email, &message.to, &message.subject, &message.body, &message.in_reply_to),
-    }
+/// `include_bcc` is set for the Sent append and for a draft. The SMTP DATA copy leaves Bcc off.
+fn compose_raw(name: &str, email: &str, message: &oru_core::Outbound, include_bcc: bool) -> Vec<u8> {
+    let tos: Vec<&str> = message.tos.iter().map(String::as_str).collect();
+    let cc: Vec<&str> = message.cc.iter().map(String::as_str).collect();
+    let bcc: Vec<&str> = message.bcc.iter().map(String::as_str).collect();
+    let (file_name, file_mime, file_bytes) = match &message.file {
+        Some(file) => (Some(file.name.as_str()), Some(file.mime.as_str()), Some(file.bytes.as_slice())),
+        None => (None, None, None),
+    };
+    raw_message_attached(
+        name,
+        email,
+        &tos,
+        &message.subject,
+        &message.body,
+        &message.in_reply_to,
+        file_name,
+        file_mime,
+        file_bytes,
+        &cc,
+        &bcc,
+        include_bcc,
+    )
 }
 
 fn taken_file(file: Option<OutboundFile>) -> Option<Attachment> {
@@ -533,15 +541,20 @@ fn save_draft(hub: &mut Hub, body: &str) -> Reply {
         Err(reason) => return Reply::json(400, error_json(reason)),
     };
     if let Some(account) = hub.account.clone() {
-        let raw = compose_raw(&account.name, &account.email, &message);
+        let raw = compose_raw(&account.name, &account.email, &message, true);
         let mailbox = drafts_name(hub);
         if let Err(error) = crate::net::file_sent(&account, &mailbox, &raw) {
             hub.last_error = format!("Saved here, but the server did not keep the draft: {error}");
         }
     }
-    let thread = hub
-        .store
-        .save_draft(&message.to, &message.subject, &message.body, taken_file(message.file));
+    let thread = hub.store.save_draft(
+        &message.tos,
+        &message.subject,
+        &message.body,
+        &message.cc,
+        &message.bcc,
+        taken_file(message.file),
+    );
     Reply::json(201, render_thread(&thread))
 }
 
@@ -553,25 +566,41 @@ fn send_message(hub: &mut Hub, body: &str) -> Reply {
     let Some(account) = hub.account.clone() else {
         let thread = hub.store.deliver(
             Address::new("You", "you@oru.test"),
-            &message.to,
+            &message.tos,
+            &message.cc,
+            &message.bcc,
             &message.subject,
             &message.body,
             taken_file(message.file),
         );
         return Reply::json(201, render_thread(&thread));
     };
-    let raw = compose_raw(&account.name, &account.email, &message);
-    if let Err(error) = crate::net::submit(&account, &message.to, &raw) {
+    // Bcc stays off the copy other people receive. The Sent append keeps it so this mailbox still lists it.
+    let wire = compose_raw(&account.name, &account.email, &message, false);
+    let filed = if message.bcc.is_empty() {
+        wire.clone()
+    } else {
+        compose_raw(&account.name, &account.email, &message, true)
+    };
+    let mut recipients = Vec::new();
+    for email in message.tos.iter().chain(&message.cc).chain(&message.bcc) {
+        if !recipients.iter().any(|have: &&str| *have == email.as_str()) {
+            recipients.push(email.as_str());
+        }
+    }
+    if let Err(error) = crate::net::submit(&account, &recipients, &wire) {
         hub.last_error = error.clone();
         return Reply::json(502, error_json(&error));
     }
     let mailbox = hub.sent_mailbox.clone();
-    if let Err(error) = crate::net::file_sent(&account, &mailbox, &raw) {
+    if let Err(error) = crate::net::file_sent(&account, &mailbox, &filed) {
         hub.last_error = format!("Sent, but the server did not keep a copy: {error}");
     }
     let thread = hub.store.deliver(
         Address::new(&account.name, &account.email),
-        &message.to,
+        &message.tos,
+        &message.cc,
+        &message.bcc,
         &message.subject,
         &message.body,
         taken_file(message.file),
@@ -1045,6 +1074,20 @@ mod tests {
             handle(&mut hub, "POST", "/api/drafts", r#"{"to":"not-an-email","subject":"Hold","body":""}"#, None).status,
             400
         );
+        let copied = handle(
+            &mut hub,
+            "POST",
+            "/api/messages",
+            r#"{"to":"ada@studio.test, bea@studio.test","cc":"cam@studio.test","bcc":"dee@studio.test","subject":"Copies","body":"Hi"}"#,
+            None,
+        );
+        assert_eq!(copied.status, 201);
+        let copied_text = std::str::from_utf8(&copied.body).unwrap();
+        assert!(copied_text.contains("ada@studio.test"));
+        assert!(copied_text.contains("bea@studio.test"));
+        assert!(copied_text.contains("cam@studio.test"));
+        assert!(copied_text.contains("dee@studio.test"));
+        assert!(copied_text.contains("\"kind\":\"bcc\""));
     }
 
     #[test]
