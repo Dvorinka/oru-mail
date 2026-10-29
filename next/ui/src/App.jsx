@@ -194,6 +194,31 @@ export default function App() {
     setThreadId(rows[0] ? rows[0].id : '');
   }
 
+  async function saveDraft() {
+    setSending(true);
+    setProblem('');
+    try {
+      const created = await getJson('/api/drafts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          to: draft.to,
+          subject: draft.subject,
+          body: draft.body,
+          inReplyTo: draft.inReplyTo,
+        }),
+      });
+      setDraft({ to: '', subject: '', body: '', inReplyTo: '', kind: '' });
+      setCompose(false);
+      await reload('drafts');
+      if (created.id) setThreadId(created.id);
+    } catch (error) {
+      setProblem(error.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
     setSending(true);
@@ -581,6 +606,9 @@ export default function App() {
             <div className="actions">
               <button className="send" type="submit" disabled={sending}>
                 {sending ? 'Sending…' : 'Send'}
+              </button>
+              <button className="ghost" type="button" onClick={saveDraft} disabled={sending}>
+                Save draft
               </button>
               <button className="ghost" type="button" onClick={() => setCompose(false)}>
                 Cancel

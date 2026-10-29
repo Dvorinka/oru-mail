@@ -16,7 +16,8 @@ use std::thread;
 use std::time::Duration;
 
 use oru_core::{
-    account_json, error_json, json_string, mailboxes_json, parse_account, parse_outbound, raw_message, render_thread,
+    account_json, error_json, json_string, mailboxes_json, parse_account, parse_draft, parse_outbound, raw_message,
+    render_thread,
     thread_json, threads_json, Account, Address, MailStore, MailboxRole, MemoryStore, Synced,
 };
 
@@ -231,6 +232,7 @@ fn handle(hub: &mut Hub, method: &str, path: &str, body: &str, ui: Option<&Path>
         ("POST", ["api", "sync"]) => refresh(hub),
         ("POST", ["api", "account"]) => save_and_sync(hub, body),
         ("POST", ["api", "messages"]) => send_message(hub, body),
+        ("POST", ["api", "drafts"]) => save_draft(hub, body),
         ("GET", _) => serve_file(path, ui),
         _ => Reply::json(405, error_json("method not allowed")),
     }
@@ -455,6 +457,38 @@ fn flag_on_server(hub: &mut Hub, id: &str, flag: ServerFlag) {
             hub.last_error = error;
         }
     }
+}
+
+fn drafts_name(hub: &Hub) -> String {
+    hub.store
+        .mailboxes()
+        .into_iter()
+        .find(|mailbox| mailbox.role == MailboxRole::Drafts)
+        .and_then(|mailbox| hub.names.get(&mailbox.id).cloned())
+        .unwrap_or_else(|| "Drafts".into())
+}
+
+fn save_draft(hub: &mut Hub, body: &str) -> Reply {
+    let message = match parse_draft(body) {
+        Ok(message) => message,
+        Err(reason) => return Reply::json(400, error_json(reason)),
+    };
+    if let Some(account) = hub.account.clone() {
+        let raw = raw_message(
+            &account.name,
+            &account.email,
+            &message.to,
+            &message.subject,
+            &message.body,
+            &message.in_reply_to,
+        );
+        let mailbox = drafts_name(hub);
+        if let Err(error) = crate::net::file_sent(&account, &mailbox, &raw) {
+            hub.last_error = format!("Saved here, but the server did not keep the draft: {error}");
+        }
+    }
+    let thread = hub.store.save_draft(&message.to, &message.subject, &message.body);
+    Reply::json(201, render_thread(&thread))
 }
 
 fn send_message(hub: &mut Hub, body: &str) -> Reply {
@@ -895,6 +929,22 @@ mod tests {
         assert!(std::str::from_utf8(&reply.body).unwrap().contains("\"mode\":\"demo\""));
         assert!(hub.account.is_none());
         assert!(hub.store.thread("t1").is_some());
+    }
+
+    #[test]
+    fn draft_is_filed_without_sending() {
+        let mut hub = Hub::demo();
+        let rejected = handle(&mut hub, "POST", "/api/messages", r#"{"to":"","subject":"Hold","body":"Later"}"#, None);
+        assert_eq!(rejected.status, 400);
+        let saved = handle(&mut hub, "POST", "/api/drafts", r#"{"to":"","subject":"Hold","body":"Later"}"#, None);
+        assert_eq!(saved.status, 201);
+        assert!(std::str::from_utf8(&saved.body).unwrap().contains("Hold"));
+        assert!(hub.store.threads("drafts").iter().any(|thread| thread.subject == "Hold"));
+        assert!(hub.store.threads("sent").iter().all(|thread| thread.subject != "Hold"));
+        assert_eq!(
+            handle(&mut hub, "POST", "/api/drafts", r#"{"to":"not-an-email","subject":"Hold","body":""}"#, None).status,
+            400
+        );
     }
 
     #[test]

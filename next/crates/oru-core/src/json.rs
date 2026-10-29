@@ -56,6 +56,15 @@ pub fn error_json(message: &str) -> String {
 
 /// Flat object of strings: `to`, `subject`, and `body`. Unknown keys are ignored.
 pub fn parse_outbound(input: &str) -> Result<Outbound, &'static str> {
+    parse_compose(input, true)
+}
+
+/// Same object as a send, but the address and subject may be empty.
+pub fn parse_draft(input: &str) -> Result<Outbound, &'static str> {
+    parse_compose(input, false)
+}
+
+fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static str> {
     let bytes = input.as_bytes();
     let mut index = 0;
     skip_ws(bytes, &mut index);
@@ -104,12 +113,18 @@ pub fn parse_outbound(input: &str) -> Result<Outbound, &'static str> {
         return Err("trailing data");
     }
     let to = to.unwrap_or_default().trim().to_string();
-    let subject = subject.unwrap_or_default().trim().to_string();
-    if !to.contains('@') || to.contains(char::is_whitespace) {
+    let mut subject = subject.unwrap_or_default().trim().to_string();
+    if !to.is_empty() && (!to.contains('@') || to.contains(char::is_whitespace)) {
+        return Err("to needs an email");
+    }
+    if require_send && !to.contains('@') {
         return Err("to needs an email");
     }
     if subject.is_empty() {
-        return Err("missing subject");
+        if require_send {
+            return Err("missing subject");
+        }
+        subject = "(no subject)".to_string();
     }
     Ok(Outbound {
         to,
@@ -467,6 +482,10 @@ mod tests {
         assert_eq!(reply.in_reply_to, "m1@studio.test");
         assert!(parse_outbound(r#"{"to":"not-an-email","subject":"Hi","body":""}"#).is_err());
         assert!(parse_outbound(r#"{"to":"a@b.c","subject":"  ","body":""}"#).is_err());
+        let draft = parse_draft(r#"{"to":"","subject":"","body":"Later"}"#).unwrap();
+        assert_eq!(draft.to, "");
+        assert_eq!(draft.subject, "(no subject)");
+        assert!(parse_draft(r#"{"to":"not-an-email","subject":"Hi","body":""}"#).is_err());
         let letter = parse_outbound(r#"{"to":"a@b.c","subject":"\u0041","body":""}"#).unwrap();
         assert_eq!(letter.subject, "A");
     }

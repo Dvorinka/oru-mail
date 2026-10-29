@@ -57,6 +57,11 @@ impl MemoryStore {
             role: MailboxRole::Sent,
         });
         store.insert_mailbox(Mailbox {
+            id: "drafts".into(),
+            name: "Drafts".into(),
+            role: MailboxRole::Drafts,
+        });
+        store.insert_mailbox(Mailbox {
             id: "archive".into(),
             name: "Archive".into(),
             role: MailboxRole::Archive,
@@ -125,6 +130,46 @@ impl MemoryStore {
             }],
         });
         store
+    }
+
+    /// Files a message in Drafts. An empty Drafts mailbox is created when missing.
+    pub fn save_draft(&mut self, to: &str, subject: &str, body: &str) -> Thread {
+        if !self.mailboxes.iter().any(|mailbox| mailbox.role == MailboxRole::Drafts) {
+            self.insert_mailbox(Mailbox {
+                id: "drafts".into(),
+                name: "Drafts".into(),
+                role: MailboxRole::Drafts,
+            });
+        }
+        let mailbox_id = self
+            .mailboxes
+            .iter()
+            .find(|mailbox| mailbox.role == MailboxRole::Drafts)
+            .map(|mailbox| mailbox.id.clone())
+            .unwrap_or_else(|| "drafts".into());
+        self.next_id += 1;
+        let id = self.next_id;
+        let thread = Thread {
+            id: format!("d{id}"),
+            mailbox_id,
+            subject: subject.to_string(),
+            messages: vec![Message {
+                id: format!("dm{id}"),
+                message_id: format!("dm{id}@oru.local"),
+                from: Address::new("You", "you@oru.test"),
+                to: if to.is_empty() { Vec::new() } else { vec![Address::new(to, to)] },
+                subject: subject.to_string(),
+                preview: preview_line(body),
+                body: body.to_string(),
+                html: String::new(),
+                attachments: Vec::new(),
+                unix_secs: now_secs(),
+                unread: false,
+                starred: false,
+            }],
+        };
+        self.insert_thread(thread.clone());
+        thread
     }
 
     /// Files a message in Sent. The id is local to this process.
