@@ -171,6 +171,17 @@ impl MemoryStore {
         true
     }
 
+    pub fn move_thread(&mut self, thread_id: &str, mailbox_id: &str) -> bool {
+        if !self.mailboxes.iter().any(|mailbox| mailbox.id == mailbox_id) {
+            return false;
+        }
+        let Some(thread) = self.threads.iter_mut().find(|thread| thread.id == thread_id) else {
+            return false;
+        };
+        thread.mailbox_id = mailbox_id.to_string();
+        true
+    }
+
     pub fn remove_thread(&mut self, thread_id: &str) -> bool {
         let before = self.threads.len();
         self.threads.retain(|thread| thread.id != thread_id);

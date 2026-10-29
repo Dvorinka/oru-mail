@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use oru_core::{
     account_json, error_json, json_string, mailboxes_json, parse_account, parse_outbound, raw_message, render_thread,
-    thread_json, threads_json, Account, Address, MailStore, MemoryStore, Synced,
+    thread_json, threads_json, Account, Address, MailStore, MailboxRole, MemoryStore, Synced,
 };
 
 const FALLBACK: &str = r#"<!doctype html>
@@ -202,6 +202,7 @@ fn handle(hub: &mut Hub, method: &str, path: &str, body: &str, ui: Option<&Path>
         ("POST", ["api", "threads", id, "read"]) if safe_id(id) => mark_read(hub, id),
         ("POST", ["api", "threads", id, "unread"]) if safe_id(id) => mark_unread(hub, id),
         ("POST", ["api", "threads", id, "trash"]) if safe_id(id) => trash(hub, id),
+        ("POST", ["api", "threads", id, "archive"]) if safe_id(id) => archive(hub, id),
         ("POST", ["api", "sign-out"]) => sign_out(hub),
         ("POST", ["api", "sync"]) => refresh(hub),
         ("POST", ["api", "account"]) => save_and_sync(hub, body),
@@ -299,6 +300,41 @@ fn mark_unread(hub: &mut Hub, id: &str) -> Reply {
     }
     flag_on_server(hub, id, ServerFlag::Unseen);
     thread_reply(hub, id)
+}
+
+fn archive(hub: &mut Hub, id: &str) -> Reply {
+    if hub.store.thread(id).is_none() {
+        return Reply::json(404, error_json("no such thread"));
+    }
+    let Some(dest) = hub.store.mailboxes().into_iter().find(|mailbox| mailbox.role == MailboxRole::Archive) else {
+        return Reply::json(400, error_json("no archive mailbox"));
+    };
+    if let Some(account) = hub.account.clone() {
+        if let Some(imap_dest) = hub.names.get(&dest.id).cloned() {
+            if let Some(thread) = hub.store.thread(id) {
+                for message in thread.messages {
+                    let Some((slug, uid)) = message.id.split_once(':') else {
+                        continue;
+                    };
+                    if !uid.chars().all(|ch| ch.is_ascii_digit()) {
+                        continue;
+                    }
+                    let Some(source) = hub.names.get(slug).cloned() else {
+                        continue;
+                    };
+                    if let Err(error) = crate::net::copy_away(&account, &source, uid, &imap_dest) {
+                        hub.last_error = error.clone();
+                        return Reply::json(502, error_json(&error));
+                    }
+                }
+            }
+        }
+    }
+    let dest_id = dest.id;
+    if !hub.store.move_thread(id, &dest_id) {
+        return Reply::json(404, error_json("no such thread"));
+    }
+    Reply::json(200, "{\"ok\":true}".into())
 }
 
 fn trash(hub: &mut Hub, id: &str) -> Reply {
@@ -765,6 +801,10 @@ mod tests {
         assert_eq!(trashed.status, 200);
         assert!(hub.store.thread("t1").is_none());
         assert!(hub.store.thread("t2").unwrap().unread());
+        let archived = handle(&mut hub, "POST", "/api/threads/t2/archive", "", None);
+        assert_eq!(archived.status, 200);
+        assert!(hub.store.threads("inbox").iter().all(|thread| thread.id != "t2"));
+        assert!(hub.store.threads("archive").iter().any(|thread| thread.id == "t2"));
 
         let path = env::temp_dir().join(format!("oru-signout-{}.json", std::process::id()));
         fs::write(&path, "not-a-real-password").unwrap();

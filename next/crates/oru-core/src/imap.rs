@@ -121,6 +121,28 @@ pub fn set_unseen<S: Read + Write>(
     store_flag(stream, user, password, mailbox, uid, "-FLAGS.SILENT (\\Seen)")
 }
 
+/// Copies one message into `dest`, then marks it deleted in the mailbox that was selected.
+/// The destination mailbox has to already exist.
+pub fn copy_away<S: Read + Write>(
+    stream: &mut S,
+    user: &str,
+    password: &str,
+    source: &str,
+    uid: &str,
+    dest: &str,
+) -> Result<(), String> {
+    if !uid.chars().all(|ch| ch.is_ascii_digit()) {
+        return Err("bad uid".into());
+    }
+    let mut proto = Proto::new(stream);
+    proto.login(user, password)?;
+    proto.select(source)?;
+    proto.exchange(&format!("UID COPY {uid} {}", quote_imap(dest)))?;
+    proto.exchange(&format!("UID STORE {uid} +FLAGS.SILENT (\\Deleted)"))?;
+    let _ = proto.exchange("LOGOUT");
+    Ok(())
+}
+
 pub fn set_deleted<S: Read + Write>(
     stream: &mut S,
     user: &str,
@@ -895,6 +917,47 @@ mod tests {
         assert_eq!(threads.len(), 1);
         assert_eq!(threads[0].id, "inbox:2");
         assert_eq!(threads[0].subject, "Older note");
+    }
+
+    #[test]
+    fn archive_copies_then_marks_the_source_deleted() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_nodelay(true).ok();
+            write(&mut stream, b"* OK test\r\n");
+            let mut commands = Vec::new();
+            loop {
+                let line = read_line(&mut stream);
+                let tag = line.split_whitespace().next().unwrap_or("a").to_string();
+                let upper = line.to_ascii_uppercase();
+                commands.push(line);
+                if upper.contains("LOGOUT") {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                    let _ = tx.send(commands);
+                    break;
+                }
+                if upper.contains(" SELECT ") {
+                    write(&mut stream, b"* 1 EXISTS\r\n");
+                }
+                write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+            }
+        });
+        let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client.set_nodelay(true).ok();
+        client.set_read_timeout(Some(Duration::from_secs(5))).ok();
+        read_greeting(&mut client).unwrap();
+        copy_away(&mut client, "ada@studio.test", "secret", "INBOX", "7", "Archive").unwrap();
+        let commands = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let copy_at = commands.iter().position(|line| line.to_ascii_uppercase().contains("UID COPY 7")).unwrap();
+        let delete_at = commands
+            .iter()
+            .position(|line| line.to_ascii_uppercase().contains("UID STORE 7 +FLAGS.SILENT (\\DELETED)"))
+            .unwrap();
+        assert!(copy_at < delete_at);
+        assert!(commands[copy_at].contains("\"Archive\""));
     }
 
     fn script(stream: &mut std::net::TcpStream, raw: &[u8]) {

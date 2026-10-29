@@ -5,7 +5,8 @@ use std::time::Duration;
 
 use native_tls::TlsConnector;
 use oru_core::{
-    append_sent, begin_starttls, pull_before, pull_session, read_greeting, send_mail, set_seen, Account, Outgoing, Synced,
+    append_sent, begin_starttls, pull_before, pull_session, read_greeting, send_mail, set_seen, Account, Outgoing,
+    Synced,
     Thread,
 };
 
@@ -27,6 +28,11 @@ pub fn mark_seen(account: &Account, mailbox: &str, uid: &str) -> Result<(), Stri
 pub fn mark_unseen(account: &Account, mailbox: &str, uid: &str) -> Result<(), String> {
     let mut stream = open_imap(account)?;
     oru_core::set_unseen(&mut stream, &account.email, &account.password, mailbox, uid)
+}
+
+pub fn copy_away(account: &Account, source: &str, uid: &str, dest: &str) -> Result<(), String> {
+    let mut stream = open_imap(account)?;
+    oru_core::copy_away(&mut stream, &account.email, &account.password, source, uid, dest)
 }
 
 pub fn mark_deleted(account: &Account, mailbox: &str, uid: &str) -> Result<(), String> {

@@ -265,7 +265,7 @@ export default function App() {
     if (kind === 'unread') seen.current = 'keep:' + threadId;
     try {
       await getJson('/api/threads/' + encodeURIComponent(threadId) + '/' + kind, { method: 'POST' });
-      if (kind === 'trash') {
+      if (kind === 'trash' || kind === 'archive') {
         await reload(mailboxId);
         return;
       }
@@ -549,6 +549,11 @@ export default function App() {
                 <button className="ghost" type="button" onClick={() => changeThread('unread')}>
                   Unread
                 </button>
+                {mailboxes.find((mailbox) => mailbox.id === mailboxId)?.role === 'archive' ? null : (
+                  <button className="ghost" type="button" onClick={() => changeThread('archive')}>
+                    Archive
+                  </button>
+                )}
                 <button className="ghost" type="button" onClick={() => changeThread('trash')}>
                   Trash
                 </button>

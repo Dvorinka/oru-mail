@@ -12,7 +12,8 @@ mod store;
 
 pub use account::{account_json, guess_hosts, parse_account, Account};
 pub use imap::{
-    append_sent, begin_starttls, pull_before, pull_session, raw_message, read_greeting, set_deleted, set_seen, set_unseen,
+    append_sent, begin_starttls, copy_away, pull_before, pull_session, raw_message, read_greeting, set_deleted, set_seen,
+    set_unseen,
     Synced,
 };
 pub use json::{
