@@ -82,7 +82,7 @@ pub fn submit(account: &Account, recipients: &[&str], raw: &[u8]) -> Result<(), 
     }
 }
 
-pub fn file_sent(account: &Account, mailbox: &str, raw: &[u8]) -> Result<(), String> {
+pub fn file_sent(account: &Account, mailbox: &str, raw: &[u8]) -> Result<Option<u32>, String> {
     let mut stream = open_imap(account)?;
     append_sent(&mut stream, &account.email, &account.password, mailbox, raw)
 }

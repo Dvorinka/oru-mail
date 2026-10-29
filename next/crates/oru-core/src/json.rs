@@ -4,7 +4,7 @@
 use crate::{MailStore, Mailbox, Message, Thread};
 
 /// One file on a compose. The bytes are the decoded upload, capped at 200 KB.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OutboundFile {
     pub name: String,
     pub mime: String,
@@ -22,6 +22,10 @@ pub struct Outbound {
     pub tos: Vec<String>,
     pub cc: Vec<String>,
     pub bcc: Vec<String>,
+    /// Existing draft to replace. Empty means a new draft.
+    pub draft_id: String,
+    /// File name kept from the draft when the shell did not upload new bytes.
+    pub kept_file: String,
     pub file: Option<OutboundFile>,
 }
 
@@ -116,6 +120,7 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
     let mut file_data = None;
     let mut cc = None;
     let mut bcc = None;
+    let mut draft_id = None;
     loop {
         skip_ws(bytes, &mut index);
         if index < bytes.len() && bytes[index] == b'}' {
@@ -137,6 +142,7 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
             "inReplyTo" => in_reply_to = Some(value),
             "cc" => cc = Some(value),
             "bcc" => bcc = Some(value),
+            "draftId" => draft_id = Some(value),
             "fileName" => file_name = Some(value),
             "fileMime" => file_mime = Some(value),
             "fileData" => file_data = Some(value),
@@ -171,6 +177,12 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
         }
         subject = "(no subject)".to_string();
     }
+    let draft_id = draft_id.unwrap_or_default().trim().to_string();
+    if !draft_id.is_empty() && !safe_draft_id(&draft_id) {
+        return Err("bad draft");
+    }
+    let supplied_name = file_name.as_deref().is_some_and(|value| !value.trim().is_empty());
+    let named = attachment_name(file_name.as_deref().unwrap_or(""));
     let file = match file_data.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
         None => None,
         Some(data) => {
@@ -179,12 +191,13 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
                 return Err("attachment is too large");
             }
             Some(OutboundFile {
-                name: attachment_name(file_name.as_deref().unwrap_or("")),
+                name: named.clone(),
                 mime: attachment_mime(file_mime.as_deref().unwrap_or("")),
                 bytes,
             })
         }
     };
+    let kept_file = if file.is_none() && supplied_name { named } else { String::new() };
     Ok(Outbound {
         to,
         subject,
@@ -193,8 +206,14 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
         tos,
         cc,
         bcc,
+        draft_id,
+        kept_file,
         file,
     })
+}
+
+fn safe_draft_id(id: &str) -> bool {
+    id.len() < 200 && !id.contains("..") && id.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | ':' | '-'))
 }
 
 /// Comma-separated addresses. A piece without `@`, or with space or header punctuation, is rejected.
@@ -641,6 +660,11 @@ mod tests {
         assert_eq!(copied.cc, vec!["cam@studio.test".to_string()]);
         assert_eq!(copied.bcc, vec!["dee@studio.test".to_string()]);
         assert!(parse_outbound(r#"{"to":"ada@studio.test","cc":"not-an-email","subject":"Hi","body":""}"#).is_err());
+        let edit = parse_draft(r#"{"to":"","subject":"Hold","body":"Later","draftId":"drafts:4","fileName":"invoice.txt"}"#).unwrap();
+        assert_eq!(edit.draft_id, "drafts:4");
+        assert_eq!(edit.kept_file, "invoice.txt");
+        assert!(edit.file.is_none());
+        assert!(parse_draft(r#"{"to":"","subject":"Hold","body":"","draftId":"../x"}"#).is_err());
     }
 
     #[test]

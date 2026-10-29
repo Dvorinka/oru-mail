@@ -138,7 +138,8 @@ impl MemoryStore {
         store
     }
 
-    /// Files a message in Drafts. An empty Drafts mailbox is created when missing.
+    /// Files a message in Drafts. An empty address is allowed.
+    /// `draft_id` replaces that draft. An unknown id returns None instead of adding a second copy.
     pub fn save_draft(
         &mut self,
         to: &[String],
@@ -147,7 +148,23 @@ impl MemoryStore {
         cc: &[String],
         bcc: &[String],
         file: Option<crate::Attachment>,
-    ) -> Thread {
+        draft_id: &str,
+    ) -> Option<Thread> {
+        if !draft_id.is_empty() {
+            return self.replace_draft(draft_id, to, subject, body, cc, bcc, file);
+        }
+        self.insert_draft(to, subject, body, cc, bcc, file)
+    }
+
+    fn insert_draft(
+        &mut self,
+        to: &[String],
+        subject: &str,
+        body: &str,
+        cc: &[String],
+        bcc: &[String],
+        file: Option<crate::Attachment>,
+    ) -> Option<Thread> {
         if !self.mailboxes.iter().any(|mailbox| mailbox.role == MailboxRole::Drafts) {
             self.insert_mailbox(Mailbox {
                 id: "drafts".into(),
@@ -186,7 +203,67 @@ impl MemoryStore {
             }],
         };
         self.insert_thread(thread.clone());
-        thread
+        Some(thread)
+    }
+
+    fn replace_draft(
+        &mut self,
+        draft_id: &str,
+        to: &[String],
+        subject: &str,
+        body: &str,
+        cc: &[String],
+        bcc: &[String],
+        file: Option<crate::Attachment>,
+    ) -> Option<Thread> {
+        let drafts_id = self
+            .mailboxes
+            .iter()
+            .find(|mailbox| mailbox.role == MailboxRole::Drafts)
+            .map(|mailbox| mailbox.id.clone())?;
+        let thread = self.threads.iter_mut().find(|thread| thread.id == draft_id && thread.mailbox_id == drafts_id)?;
+        let (message_id, header_id, starred) = match thread.messages.last() {
+            Some(message) => (message.id.clone(), message.message_id.clone(), message.starred),
+            None => (format!("dm{draft_id}"), format!("{draft_id}@oru.local"), false),
+        };
+        thread.subject = subject.to_string();
+        thread.messages = vec![Message {
+            id: message_id.clone(),
+            message_id: header_id,
+            from: Address::new("You", "you@oru.test"),
+            to: addresses(to),
+            cc: addresses(cc),
+            bcc: addresses(bcc),
+            subject: subject.to_string(),
+            preview: preview_line(body),
+            body: body.to_string(),
+            html: String::new(),
+            attachments: stamp_file(file, &message_id),
+            unix_secs: now_secs(),
+            unread: false,
+            starred,
+        }];
+        Some(thread.clone())
+    }
+
+    /// Points a draft at the uid from APPENDUID so the next edit can delete that server copy.
+    pub fn retarget_draft(&mut self, old_id: &str, new_id: &str) -> Option<Thread> {
+        if new_id.is_empty() || old_id == new_id || self.threads.iter().any(|thread| thread.id == new_id) {
+            return self.thread(old_id);
+        }
+        let thread = self.threads.iter_mut().find(|thread| thread.id == old_id)?;
+        let old_message = thread.messages.last().map(|message| message.id.clone()).unwrap_or_default();
+        thread.id = new_id.to_string();
+        if let Some(message) = thread.messages.last_mut() {
+            message.id = new_id.to_string();
+            let prefix = format!("{old_message}:");
+            for file in &mut message.attachments {
+                if let Some(rest) = file.id.strip_prefix(&prefix) {
+                    file.id = format!("{new_id}:{rest}");
+                }
+            }
+        }
+        Some(thread.clone())
     }
 
     /// Files a message in Sent. The id is local to this process.
@@ -515,6 +592,26 @@ mod tests {
         assert_eq!(thread.messages[0].to[0].email, "ada@studio.test");
         assert!(store.threads("sent").iter().any(|item| item.id == thread.id));
         assert_ne!(thread.id, "t3");
+        let first = store.save_draft(&[], "Hold", "Later", &[], &[], None, "").unwrap();
+        let second = store
+            .save_draft(
+                &["ada@studio.test".into()],
+                "Held",
+                "Now",
+                &["bea@studio.test".into()],
+                &[],
+                None,
+                &first.id,
+            )
+            .unwrap();
+        assert_eq!(second.id, first.id);
+        assert_eq!(store.threads("drafts").len(), 1);
+        assert_eq!(second.messages[0].cc[0].email, "bea@studio.test");
+        assert!(store.save_draft(&[], "Nope", "", &[], &[], None, "missing").is_none());
+        let moved = store.retarget_draft(&first.id, "drafts:15").unwrap();
+        assert_eq!(moved.id, "drafts:15");
+        assert_eq!(moved.messages[0].id, "drafts:15");
+        assert!(store.thread(&first.id).is_none());
     }
 
     #[test]

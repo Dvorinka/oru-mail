@@ -540,21 +540,44 @@ fn save_draft(hub: &mut Hub, body: &str) -> Reply {
         Ok(message) => message,
         Err(reason) => return Reply::json(400, error_json(reason)),
     };
+    if !message.draft_id.is_empty() && !draft_in_box(hub, &message.draft_id) {
+        return Reply::json(404, error_json("no such draft"));
+    }
+    let file = draft_attachment(hub, &message);
+    let mut new_uid = None;
     if let Some(account) = hub.account.clone() {
         let raw = compose_raw(&account.name, &account.email, &message, true);
         let mailbox = drafts_name(hub);
-        if let Err(error) = crate::net::file_sent(&account, &mailbox, &raw) {
-            hub.last_error = format!("Saved here, but the server did not keep the draft: {error}");
+        match crate::net::file_sent(&account, &mailbox, &raw) {
+            Ok(uid) => {
+                // The previous server copy is marked deleted only after the new body is stored. No EXPUNGE.
+                if !message.draft_id.is_empty() {
+                    flag_on_server(hub, &message.draft_id, ServerFlag::Deleted);
+                }
+                new_uid = uid;
+            }
+            Err(error) => {
+                hub.last_error = format!("Saved here, but the server did not keep the draft: {error}");
+            }
         }
     }
-    let thread = hub.store.save_draft(
+    let Some(mut thread) = hub.store.save_draft(
         &message.tos,
         &message.subject,
         &message.body,
         &message.cc,
         &message.bcc,
-        taken_file(message.file),
-    );
+        file,
+        &message.draft_id,
+    ) else {
+        return Reply::json(404, error_json("no such draft"));
+    };
+    if let Some(uid) = new_uid {
+        let slug = drafts_slug(hub);
+        if let Some(updated) = hub.store.retarget_draft(&thread.id, &format!("{slug}:{uid}")) {
+            thread = updated;
+        }
+    }
     Reply::json(201, render_thread(&thread))
 }
 
@@ -563,49 +586,93 @@ fn send_message(hub: &mut Hub, body: &str) -> Reply {
         Ok(message) => message,
         Err(reason) => return Reply::json(400, error_json(reason)),
     };
-    let Some(account) = hub.account.clone() else {
+    let file = draft_attachment(hub, &message);
+    if let Some(account) = hub.account.clone() {
+        // Bcc stays off the copy other people receive. The Sent append keeps it so this mailbox still lists it.
+        let wire = compose_raw(&account.name, &account.email, &message, false);
+        let filed = if message.bcc.is_empty() {
+            wire.clone()
+        } else {
+            compose_raw(&account.name, &account.email, &message, true)
+        };
+        let mut recipients = Vec::new();
+        for email in message.tos.iter().chain(&message.cc).chain(&message.bcc) {
+            if !recipients.iter().any(|have: &&str| *have == email.as_str()) {
+                recipients.push(email.as_str());
+            }
+        }
+        if let Err(error) = crate::net::submit(&account, &recipients, &wire) {
+            hub.last_error = error.clone();
+            return Reply::json(502, error_json(&error));
+        }
+        let mailbox = hub.sent_mailbox.clone();
+        if let Err(error) = crate::net::file_sent(&account, &mailbox, &filed) {
+            hub.last_error = format!("Sent, but the server did not keep a copy: {error}");
+        }
         let thread = hub.store.deliver(
-            Address::new("You", "you@oru.test"),
+            Address::new(&account.name, &account.email),
             &message.tos,
             &message.cc,
             &message.bcc,
             &message.subject,
             &message.body,
-            taken_file(message.file),
+            file,
         );
+        drop_draft(hub, &message.draft_id);
         return Reply::json(201, render_thread(&thread));
-    };
-    // Bcc stays off the copy other people receive. The Sent append keeps it so this mailbox still lists it.
-    let wire = compose_raw(&account.name, &account.email, &message, false);
-    let filed = if message.bcc.is_empty() {
-        wire.clone()
-    } else {
-        compose_raw(&account.name, &account.email, &message, true)
-    };
-    let mut recipients = Vec::new();
-    for email in message.tos.iter().chain(&message.cc).chain(&message.bcc) {
-        if !recipients.iter().any(|have: &&str| *have == email.as_str()) {
-            recipients.push(email.as_str());
-        }
-    }
-    if let Err(error) = crate::net::submit(&account, &recipients, &wire) {
-        hub.last_error = error.clone();
-        return Reply::json(502, error_json(&error));
-    }
-    let mailbox = hub.sent_mailbox.clone();
-    if let Err(error) = crate::net::file_sent(&account, &mailbox, &filed) {
-        hub.last_error = format!("Sent, but the server did not keep a copy: {error}");
     }
     let thread = hub.store.deliver(
-        Address::new(&account.name, &account.email),
+        Address::new("You", "you@oru.test"),
         &message.tos,
         &message.cc,
         &message.bcc,
         &message.subject,
         &message.body,
-        taken_file(message.file),
+        file,
     );
+    drop_draft(hub, &message.draft_id);
     Reply::json(201, render_thread(&thread))
+}
+
+fn drafts_slug(hub: &Hub) -> String {
+    hub.store
+        .mailboxes()
+        .into_iter()
+        .find(|mailbox| mailbox.role == MailboxRole::Drafts)
+        .map(|mailbox| mailbox.id)
+        .unwrap_or_else(|| "drafts".into())
+}
+
+fn draft_in_box(hub: &Hub, id: &str) -> bool {
+    let slug = drafts_slug(hub);
+    hub.store.thread(id).is_some_and(|thread| thread.mailbox_id == slug)
+}
+
+/// A named file with no new bytes keeps the attachment already stored on that draft.
+fn draft_attachment(hub: &Hub, message: &oru_core::Outbound) -> Option<Attachment> {
+    if message.file.is_some() {
+        return taken_file(message.file.clone());
+    }
+    if message.draft_id.is_empty() || message.kept_file.is_empty() || !draft_in_box(hub, &message.draft_id) {
+        return None;
+    }
+    hub.store.thread(&message.draft_id).and_then(|thread| {
+        thread
+            .messages
+            .iter()
+            .flat_map(|item| item.attachments.iter())
+            .find(|file| file.name == message.kept_file)
+            .cloned()
+    })
+}
+
+/// Sending removes the draft after the message is accepted. A demo id has no uid, so only the local row goes.
+fn drop_draft(hub: &mut Hub, draft_id: &str) {
+    if draft_id.is_empty() || !draft_in_box(hub, draft_id) {
+        return;
+    }
+    flag_on_server(hub, draft_id, ServerFlag::Deleted);
+    hub.store.remove_thread(draft_id);
 }
 
 fn read_account() -> Result<Option<Account>, String> {
@@ -1088,6 +1155,49 @@ mod tests {
         assert!(copied_text.contains("cam@studio.test"));
         assert!(copied_text.contains("dee@studio.test"));
         assert!(copied_text.contains("\"kind\":\"bcc\""));
+        let saved_again = handle(
+            &mut hub,
+            "POST",
+            "/api/drafts",
+            r#"{"to":"","subject":"Hold","body":"Later","fileName":"invoice.txt","fileMime":"text/plain","fileData":"VHJhY2tpbmc="}"#,
+            None,
+        );
+        assert_eq!(saved_again.status, 201);
+        let saved_text = std::str::from_utf8(&saved_again.body).unwrap();
+        let draft_id = saved_text.split("\"id\":\"").nth(1).unwrap().split('"').next().unwrap();
+        let edited = handle(
+            &mut hub,
+            "POST",
+            "/api/drafts",
+            &format!(r#"{{"draftId":"{draft_id}","to":"ada@studio.test","subject":"Held","body":"Now","fileName":"invoice.txt"}}"#),
+            None,
+        );
+        assert_eq!(edited.status, 201);
+        assert_eq!(hub.store.threads("drafts").iter().filter(|thread| thread.id == draft_id).count(), 1);
+        assert_eq!(hub.store.thread(draft_id).unwrap().subject, "Held");
+        let kept = std::str::from_utf8(&edited.body).unwrap();
+        let file_id = kept.split("\"attachments\":[{\"id\":\"").nth(1).unwrap().split('"').next().unwrap();
+        assert_eq!(handle(&mut hub, "GET", &format!("/api/attachments/{file_id}"), "", None).body, b"Tracking");
+        let sent = handle(
+            &mut hub,
+            "POST",
+            "/api/messages",
+            &format!(r#"{{"draftId":"{draft_id}","to":"ada@studio.test","subject":"Held","body":"Now","fileName":"invoice.txt"}}"#),
+            None,
+        );
+        assert_eq!(sent.status, 201);
+        assert!(hub.store.threads("drafts").iter().all(|thread| thread.id != draft_id));
+        assert!(hub.store.threads("sent").iter().any(|thread| thread.subject == "Held"));
+        assert_eq!(handle(&mut hub, "POST", "/api/drafts", r#"{"draftId":"missing","subject":"Hold","body":""}"#, None).status, 404);
+        let left_inbox = handle(
+            &mut hub,
+            "POST",
+            "/api/messages",
+            r#"{"draftId":"t1","to":"ada@studio.test","subject":"Nope","body":"Hi"}"#,
+            None,
+        );
+        assert_eq!(left_inbox.status, 201);
+        assert!(hub.store.thread("t1").is_some());
     }
 
     #[test]

@@ -226,18 +226,20 @@ fn store_flag<S: Read + Write>(
     Ok(())
 }
 
+/// Appends one message. The uid is present when the server answers with APPENDUID.
+/// Without that code the caller keeps the local id.
 pub fn append_sent<S: Read + Write>(
     stream: &mut S,
     user: &str,
     password: &str,
     mailbox: &str,
     raw: &[u8],
-) -> Result<(), String> {
+) -> Result<Option<u32>, String> {
     let mut proto = Proto::new(stream);
     proto.login(user, password)?;
-    proto.append(mailbox, raw)?;
+    let uid = proto.append(mailbox, raw)?;
     let _ = proto.exchange("LOGOUT");
-    Ok(())
+    Ok(uid)
 }
 
 struct Listed {
@@ -383,7 +385,7 @@ impl<'a, S: Read + Write> Proto<'a, S> {
         }
     }
 
-    fn append(&mut self, mailbox: &str, raw: &[u8]) -> Result<(), String> {
+    fn append(&mut self, mailbox: &str, raw: &[u8]) -> Result<Option<u32>, String> {
         self.tag += 1;
         let tag = format!("a{:03}", self.tag);
         let command = format!("{tag} APPEND {} (\\Seen) {{{}}}\r\n", quote_imap(mailbox), raw.len());
@@ -410,7 +412,7 @@ impl<'a, S: Read + Write> Proto<'a, S> {
             if let Some(rest) = trimmed.strip_prefix(&tag) {
                 let rest = rest.trim();
                 if rest.starts_with("OK") {
-                    return Ok(());
+                    return Ok(append_uid(rest));
                 }
                 return Err(rest.to_string());
             }
@@ -815,6 +817,16 @@ fn message_from(slug: &str, item: &Fetched) -> Message {
         unread: item.unread,
         starred: item.starred,
     }
+}
+
+fn append_uid(response: &str) -> Option<u32> {
+    let upper = response.to_ascii_uppercase();
+    let start = upper.find("APPENDUID")?;
+    let after = response[start + "APPENDUID".len()..].trim_start();
+    let mut parts = after.split_whitespace();
+    let _validity = parts.next()?;
+    let uid = parts.next()?.trim_matches(|ch: char| ch == ']' || ch == ')');
+    uid.parse().ok()
 }
 
 fn quote_imap(value: &str) -> String {
@@ -1339,6 +1351,56 @@ mod tests {
         set_flagged(&mut client, "ada@studio.test", "secret", "INBOX", "7", false).unwrap();
         let commands = rx.recv_timeout(Duration::from_secs(5)).unwrap();
         assert!(commands.iter().any(|line| line.contains("UID STORE 7 -FLAGS.SILENT (\\Flagged)")));
+    }
+
+    #[test]
+    fn append_reports_the_uid_when_the_server_sends_one() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_nodelay(true).ok();
+            loop {
+                let line = read_line(&mut stream);
+                if line.is_empty() {
+                    break;
+                }
+                let tag = line.split_whitespace().next().unwrap_or("a").to_string();
+                let upper = line.to_ascii_uppercase();
+                if upper.contains("APPEND") {
+                    let size = line
+                        .rsplit('{')
+                        .next()
+                        .unwrap_or("0")
+                        .trim_end_matches(|ch: char| ch == '}' || ch.is_whitespace())
+                        .parse::<usize>()
+                        .unwrap_or(0);
+                    write(&mut stream, b"+ go\r\n");
+                    let mut body = vec![0u8; size + 2];
+                    let mut got = 0;
+                    while got < body.len() {
+                        let read = stream.read(&mut body[got..]).unwrap_or(0);
+                        if read == 0 {
+                            break;
+                        }
+                        got += read;
+                    }
+                    write(&mut stream, format!("{tag} OK [APPENDUID 9 15] APPEND completed\r\n").as_bytes());
+                } else if upper.contains("LOGOUT") {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                    break;
+                } else {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                }
+            }
+        });
+        let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client.set_nodelay(true).ok();
+        client.set_read_timeout(Some(Duration::from_secs(5))).ok();
+        client.set_write_timeout(Some(Duration::from_secs(5))).ok();
+        let uid = append_sent(&mut client, "ada@studio.test", "secret", "Drafts", b"Subject: Hold\r\n\r\nLater\r\n").unwrap();
+        assert_eq!(uid, Some(15));
+        assert_eq!(append_uid("OK done"), None);
     }
 
     fn script(stream: &mut std::net::TcpStream, raw: &[u8]) {

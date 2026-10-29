@@ -85,6 +85,7 @@ const emptyDraft = {
   fileName: '',
   fileMime: '',
   fileData: '',
+  draftId: '',
 };
 
 function guessHosts(email) {
@@ -196,7 +197,7 @@ export default function App() {
       return;
     }
     let gone = false;
-    getJson('/api/threads/' + encodeURIComponent(threadId))
+    getJson('/api/threads/' + threadId)
       .then((row) => {
         if (!gone) setDetail(row);
       })
@@ -214,7 +215,7 @@ export default function App() {
     seen.current = threadId;
     let gone = false;
     const id = threadId;
-    getJson('/api/threads/' + encodeURIComponent(id) + '/read', { method: 'POST' })
+    getJson('/api/threads/' + id + '/read', { method: 'POST' })
       .then(() => {
         if (gone || seen.current !== id) return;
         setThreads((rows) => rows.map((row) => (row.id === id ? { ...row, unread: false } : row)));
@@ -229,6 +230,49 @@ export default function App() {
       gone = true;
     };
   }, [detail, threadId]);
+
+  function emailsOf(message, kind) {
+    return (message.recipients || [])
+      .filter((row) => row.kind === kind)
+      .map((row) => row.email)
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  async function openRow(thread) {
+    setAccountOpen(false);
+    setThreadId(thread.id);
+    const box = mailboxes.find((item) => item.id === mailboxId);
+    if (!box || box.role !== 'drafts') {
+      setCompose(false);
+      return;
+    }
+    try {
+      const row = await getJson('/api/threads/' + thread.id);
+      const message = (row.messages || [])[row.messages.length - 1];
+      if (!message) {
+        setCompose(false);
+        return;
+      }
+      const file = (message.attachments || [])[0];
+      setDraft({
+        ...emptyDraft,
+        draftId: row.id,
+        to: emailsOf(message, 'to') || message.toEmail || '',
+        cc: emailsOf(message, 'cc'),
+        bcc: emailsOf(message, 'bcc'),
+        subject: row.subject || '',
+        body: message.body || '',
+        fileName: file ? file.name : '',
+        fileMime: file ? file.mime : '',
+      });
+      setCompose(true);
+      setProblem('');
+    } catch (error) {
+      setCompose(false);
+      setProblem(error.message);
+    }
+  }
 
   function openMailbox(id) {
     setCompose(false);
@@ -310,6 +354,7 @@ export default function App() {
           subject: draft.subject,
           body: draft.body,
           inReplyTo: draft.inReplyTo,
+          draftId: draft.draftId,
           fileName: draft.fileName,
           fileMime: draft.fileMime,
           fileData: draft.fileData,
@@ -341,6 +386,7 @@ export default function App() {
           subject: draft.subject,
           body: draft.body,
           inReplyTo: draft.inReplyTo,
+          draftId: draft.draftId,
           fileName: draft.fileName,
           fileMime: draft.fileMime,
           fileData: draft.fileData,
@@ -438,7 +484,7 @@ export default function App() {
     setProblem('');
     if (kind === 'unread') seen.current = 'keep:' + threadId;
     try {
-      const updated = await getJson('/api/threads/' + encodeURIComponent(threadId) + '/' + kind, { method: 'POST' });
+      const updated = await getJson('/api/threads/' + threadId + '/' + kind, { method: 'POST' });
       if (kind === 'trash' || kind === 'archive') {
         await reload(mailboxId);
         return;
@@ -469,7 +515,7 @@ export default function App() {
     setProblem('');
     try {
       await getJson(
-        '/api/threads/' + encodeURIComponent(threadId) + '/move/' + encodeURIComponent(destId),
+        '/api/threads/' + threadId + '/move/' + destId,
         { method: 'POST' }
       );
       await reload(mailboxId);
@@ -537,6 +583,7 @@ export default function App() {
           type="button"
           onClick={() => {
             setAccountOpen(false);
+            setDraft(emptyDraft);
             setCompose(true);
           }}
         >
@@ -599,11 +646,7 @@ export default function App() {
               key={thread.id}
               type="button"
               className={selected && selected.id === thread.id ? 'row on' : 'row'}
-              onClick={() => {
-                setCompose(false);
-                setAccountOpen(false);
-                setThreadId(thread.id);
-              }}
+              onClick={() => openRow(thread)}
             >
               <span className="avatar">{party(thread, mailboxId).slice(0, 1)}</span>
               <span className="row-copy">
@@ -701,7 +744,7 @@ export default function App() {
           </form>
         ) : compose ? (
           <form className="form" onSubmit={submit}>
-            <h1>{draft.kind === 'forward' ? 'Forward' : draft.inReplyTo ? 'Reply' : 'New message'}</h1>
+            <h1>{draft.draftId ? 'Edit' : draft.kind === 'forward' ? 'Forward' : draft.inReplyTo ? 'Reply' : 'New message'}</h1>
             <label>
               To
               <input
@@ -762,7 +805,18 @@ export default function App() {
                 }}
               />
             </label>
-            {draft.fileName ? <p className="note">{draft.fileName}</p> : null}
+            {draft.fileName ? (
+              <p className="note">
+                {draft.fileName}{' '}
+                <button
+                  className="ghost"
+                  type="button"
+                  onClick={() => setDraft((current) => ({ ...current, fileName: '', fileMime: '', fileData: '' }))}
+                >
+                  Remove file
+                </button>
+              </p>
+            ) : null}
             <div className="actions">
               <button className="send" type="submit" disabled={sending}>
                 {sending ? 'Sending…' : 'Send'}
