@@ -696,6 +696,14 @@ fn message_from(slug: &str, item: &Fetched) -> Message {
         subject: item.mail.subject.clone(),
         preview: item.mail.preview.clone(),
         body: item.mail.body.clone(),
+        html: item.mail.html.clone(),
+        attachments: {
+            let mut files = item.mail.attachments.clone();
+            for (index, file) in files.iter_mut().enumerate() {
+                file.id = format!("{slug}:{}:{index}", item.uid);
+            }
+            files
+        },
         unix_secs: item.mail.unix_secs,
         unread: item.unread,
     }

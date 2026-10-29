@@ -137,6 +137,10 @@ button, input { font: inherit; }
 .who { margin: 0 0 16px; color: #5e5b55; }
 .sheet { background: var(--sheet); padding: 16px 18px; }
 .sheet p { margin: 0 0 10px; line-height: 1.6; }
+.html-mail { width: 100%; height: 280px; border: 0; background: #fff; }
+.files { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.files a { color: #1e6b45; }
+.files span { color: #5e5b55; font-size: 12px; }
 .actions { display: flex; gap: 8px; margin-top: 16px; }
 .actions button,
 .send {

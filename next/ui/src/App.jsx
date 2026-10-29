@@ -9,6 +9,12 @@ async function getJson(path, options) {
   return payload;
 }
 
+function sizeLabel(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return ' ' + bytes + ' B';
+  return ' ' + Math.max(1, Math.round(bytes / 1024)) + ' KB';
+}
+
 function whenLabel(unixSecs) {
   if (!unixSecs) return '';
   return new Date(unixSecs * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -532,10 +538,24 @@ export default function App() {
                 <div key={message.id}>
                   <p className="who">{whoLine(message, mailboxId)}</p>
                   <div className="sheet">
-                    {message.body.split('\n').map((line, index) => (
-                      <p key={message.id + '-' + index}>{line || '\u00a0'}</p>
-                    ))}
+                    {message.html ? (
+                      <iframe className="html-mail" sandbox="allow-popups" referrerPolicy="no-referrer" title={message.subject || 'Message'} srcDoc={message.html} />
+                    ) : (
+                      message.body.split('\n').map((line, index) => (
+                        <p key={message.id + '-' + index}>{line || '\u00a0'}</p>
+                      ))
+                    )}
                   </div>
+                  {message.attachments && message.attachments.length > 0 ? (
+                    <ul className="files">
+                      {message.attachments.map((file) => (
+                        <li key={file.id}>
+                          <a href={'/api/attachments/' + file.id}>{file.name}</a>
+                          <span>{sizeLabel(file.size)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               ))
             ) : (

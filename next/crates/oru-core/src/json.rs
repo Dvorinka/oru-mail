@@ -206,6 +206,26 @@ fn push_message(out: &mut String, message: &Message) {
     out.push(',');
     field(out, "body", &message.body);
     out.push(',');
+    field(out, "html", &crate::mime::sanitize_html(&message.html));
+    out.push(',');
+    out.push_str("\"attachments\":[");
+    for (index, attachment) in message.attachments.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        out.push('{');
+        field(out, "id", &attachment.id);
+        out.push(',');
+        field(out, "name", &attachment.name);
+        out.push(',');
+        field(out, "mime", &attachment.mime);
+        out.push(',');
+        out.push_str("\"size\":");
+        out.push_str(&attachment.bytes.len().to_string());
+        out.push('}');
+    }
+    out.push(']');
+    out.push(',');
     out.push_str("\"unixSecs\":");
     out.push_str(&message.unix_secs.to_string());
     out.push(',');
@@ -391,6 +411,13 @@ mod tests {
         assert!(one.contains("The rail stays dark"));
         assert!(one.contains("\"messages\":["));
         assert!(one.contains("\"messageId\":\"m1@studio.test\""));
+        let sent = thread_json(&store, "t3").unwrap();
+        assert!(sent.contains("square mark"));
+        assert!(!sent.to_ascii_lowercase().contains("<script"));
+        assert!(!sent.contains("alert(1)"));
+        let shipped = thread_json(&store, "t2").unwrap();
+        assert!(shipped.contains("\"name\":\"invoice.txt\""));
+        assert!(!shipped.contains("Tracking is on the invoice.\\n"));
     }
 
     #[test]
@@ -408,6 +435,8 @@ mod tests {
                 subject: "Say \"hi\"".into(),
                 preview: "line\n2".into(),
                 body: "line\n2".into(),
+                html: String::new(),
+                attachments: Vec::new(),
                 unix_secs: 1,
                 unread: false,
             }],

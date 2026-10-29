@@ -74,6 +74,8 @@ impl MemoryStore {
                 subject: "Studio notes".into(),
                 preview: "The rail stays dark. The canvas stays quiet.".into(),
                 body: "The rail stays dark. The canvas stays quiet.\n\nReply when the type is set.".into(),
+                html: String::new(),
+                attachments: Vec::new(),
                 unix_secs: 1_730_000_000,
                 unread: true,
             }],
@@ -90,6 +92,13 @@ impl MemoryStore {
                 subject: "Shipment 441".into(),
                 preview: "Left the dock this morning.".into(),
                 body: "Left the dock this morning. Tracking is on the invoice.".into(),
+                html: String::new(),
+                attachments: vec![crate::Attachment {
+                    id: "m2:0".into(),
+                    name: "invoice.txt".into(),
+                    mime: "text/plain".into(),
+                    bytes: b"Tracking is on the invoice.\n".to_vec(),
+                }],
                 unix_secs: 1_729_900_000,
                 unread: false,
             }],
@@ -106,6 +115,8 @@ impl MemoryStore {
                 subject: "Re: Fold sample".into(),
                 preview: "Sending the square mark, not the round one.".into(),
                 body: "Sending the square mark, not the round one. Lime on ink.".into(),
+                html: "<p>Sending the square mark, not the round one.</p><script>alert(1)</script>".into(),
+                attachments: Vec::new(),
                 unix_secs: 1_729_800_000,
                 unread: false,
             }],
@@ -141,6 +152,8 @@ impl MemoryStore {
                 subject: subject.to_string(),
                 preview,
                 body: body.to_string(),
+                html: String::new(),
+                attachments: Vec::new(),
                 unix_secs: now_secs(),
                 unread: false,
             }],
@@ -186,6 +199,14 @@ impl MemoryStore {
         let before = self.threads.len();
         self.threads.retain(|thread| thread.id != thread_id);
         self.threads.len() != before
+    }
+
+    pub fn attachment(&self, id: &str) -> Option<&crate::Attachment> {
+        let (message_id, index) = id.rsplit_once(':')?;
+        let index: usize = index.parse().ok()?;
+        self.threads.iter().find_map(|thread| {
+            thread.messages.iter().find(|message| message.id == message_id).and_then(|message| message.attachments.get(index))
+        })
     }
 }
 
@@ -258,6 +279,8 @@ mod tests {
                 subject: "Newer".into(),
                 preview: String::new(),
                 body: String::new(),
+                html: String::new(),
+                attachments: Vec::new(),
                 unix_secs: 10,
                 unread: false,
             }],
@@ -274,6 +297,8 @@ mod tests {
                 subject: "Older".into(),
                 preview: String::new(),
                 body: String::new(),
+                html: String::new(),
+                attachments: Vec::new(),
                 unix_secs: 1,
                 unread: false,
             }],

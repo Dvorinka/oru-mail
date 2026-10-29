@@ -44,6 +44,15 @@ pub struct Mailbox {
     pub role: MailboxRole,
 }
 
+/// A file on a message. The bytes stay on the store; the JSON lists name and size.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Attachment {
+    pub id: String,
+    pub name: String,
+    pub mime: String,
+    pub bytes: Vec<u8>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
     pub id: String,
@@ -55,6 +64,9 @@ pub struct Message {
     pub subject: String,
     pub preview: String,
     pub body: String,
+    /// Sanitized HTML. Empty when the message is plain text.
+    pub html: String,
+    pub attachments: Vec<Attachment>,
     /// Unix seconds. The store orders threads by the newest message.
     pub unix_secs: i64,
     pub unread: bool,

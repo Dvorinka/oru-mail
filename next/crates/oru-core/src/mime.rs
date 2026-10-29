@@ -1,8 +1,9 @@
 //! Enough of an RFC 5322 message to fill a thread row.
-//! Multipart mail prefers text/plain. HTML-only mail is shown with the tags removed.
+//! Multipart mail prefers text/plain for the text body and keeps a sanitized HTML copy.
+//! Other parts are attachments. The HTML copy is what the shell may frame.
 
 use crate::base64;
-use crate::Address;
+use crate::{Address, Attachment};
 
 const MAX_BODY: usize = 200_000;
 
@@ -15,6 +16,8 @@ pub struct ParsedMail {
     pub unix_secs: i64,
     pub message_id: String,
     pub references: Vec<String>,
+    pub html: String,
+    pub attachments: Vec<Attachment>,
 }
 
 pub fn parse(raw: &[u8]) -> ParsedMail {
@@ -35,7 +38,8 @@ pub fn parse(raw: &[u8]) -> ParsedMail {
     let message_id = header(&headers, "message-id").trim().trim_matches(|ch| ch == '<' || ch == '>').to_string();
     let references = reference_ids(&header(&headers, "references"), &header(&headers, "in-reply-to"));
     let unix_secs = parse_date(&header(&headers, "date")).unwrap_or(0);
-    let text = part_text(&headers, body, 0);
+    let collected = collect_parts(&headers, body, 0);
+    let text = collected.plain.unwrap_or_default();
     let text = if text.len() > MAX_BODY {
         let mut cut = text.chars().take(MAX_BODY).collect::<String>();
         cut.push_str("\n\n[truncated]");
@@ -53,7 +57,92 @@ pub fn parse(raw: &[u8]) -> ParsedMail {
         unix_secs,
         message_id,
         references,
+        html: collected.html.unwrap_or_default(),
+        attachments: collected.attachments,
     }
+}
+
+struct Collected {
+    plain: Option<String>,
+    html: Option<String>,
+    attachments: Vec<Attachment>,
+}
+
+fn collect_parts(headers: &[(String, String)], body: &[u8], depth: usize) -> Collected {
+    let mut collected = Collected {
+        plain: None,
+        html: None,
+        attachments: Vec::new(),
+    };
+    walk_parts(headers, body, depth, &mut collected);
+    collected
+}
+
+fn walk_parts(headers: &[(String, String)], body: &[u8], depth: usize, collected: &mut Collected) {
+    if depth > 6 {
+        return;
+    }
+    let content_type = header(headers, "content-type");
+    let mime = content_type.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    let disposition = header(headers, "content-disposition");
+    let filename = parameter(&disposition, "filename").or_else(|| parameter(&content_type, "name"));
+    let decoded = transfer(body, &header(headers, "content-transfer-encoding"));
+    if mime.starts_with("multipart/") {
+        if let Some(boundary) = parameter(&content_type, "boundary") {
+            walk_multipart(&decoded, &boundary, depth, collected);
+        }
+        return;
+    }
+    if is_file(&mime, &disposition) {
+        if collected.attachments.len() < 8 && decoded.len() <= MAX_BODY {
+            collected.attachments.push(Attachment {
+                id: String::new(),
+                name: file_name(filename.as_deref().unwrap_or("file")),
+                mime: if mime.is_empty() { "application/octet-stream".into() } else { mime },
+                bytes: decoded,
+            });
+        }
+        return;
+    }
+    let text = decode_body(&decoded, &parameter(&content_type, "charset").unwrap_or_default());
+    let html_part = mime.contains("html") || text.trim_start().starts_with("<!doctype html") || text.trim_start().starts_with("<html");
+    if html_part {
+        if collected.html.is_none() {
+            collected.html = Some(sanitize_html(&text));
+        }
+        if collected.plain.is_none() {
+            collected.plain = Some(strip_html(&text));
+        }
+    } else if collected.plain.is_none() {
+        collected.plain = Some(text);
+    }
+}
+
+fn walk_multipart(body: &[u8], boundary: &str, depth: usize, collected: &mut Collected) {
+    let marker = format!("--{boundary}");
+    let text = decode_latin1_or_utf8(body);
+    for part in text.split(&marker).skip(1) {
+        let part = part.trim_start_matches("\r\n").trim_start_matches('\n');
+        if part.starts_with("--") {
+            break;
+        }
+        let (header_bytes, body) = split_message(part.as_bytes());
+        let headers = unfold(&decode_latin1_or_utf8(header_bytes));
+        walk_parts(&headers, body, depth + 1, collected);
+    }
+}
+
+fn is_file(mime: &str, disposition: &str) -> bool {
+    if disposition.to_ascii_lowercase().contains("attachment") {
+        return true;
+    }
+    !(mime.is_empty() || mime.starts_with("text/plain") || mime.starts_with("text/html") || mime.starts_with("multipart/"))
+}
+
+fn file_name(value: &str) -> String {
+    let name = value.rsplit(['/', '\\']).next().unwrap_or(value).trim();
+    let name: String = name.chars().filter(|ch| !ch.is_control() && *ch != '"' ).take(120).collect();
+    if name.is_empty() { "file".into() } else { name }
 }
 
 pub fn parse_date(value: &str) -> Option<i64> {
@@ -161,51 +250,6 @@ fn header(headers: &[(String, String)], name: &str) -> String {
         .find(|(key, _)| key == name)
         .map(|(_, value)| value.clone())
         .unwrap_or_default()
-}
-
-fn part_text(headers: &[(String, String)], body: &[u8], depth: usize) -> String {
-    if depth > 6 {
-        return String::new();
-    }
-    let content_type = header(headers, "content-type");
-    let mime = content_type.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
-    let decoded = transfer(body, &header(headers, "content-transfer-encoding"));
-    if mime.starts_with("multipart/") {
-        let Some(boundary) = parameter(&content_type, "boundary") else {
-            return String::new();
-        };
-        return multipart(&decoded, &boundary, depth);
-    }
-    let text = decode_body(&decoded, &parameter(&content_type, "charset").unwrap_or_default());
-    if mime.contains("html") || text.trim_start().starts_with("<!doctype html") || text.trim_start().starts_with("<html") {
-        return strip_html(&text);
-    }
-    text
-}
-
-fn multipart(body: &[u8], boundary: &str, depth: usize) -> String {
-    let marker = format!("--{boundary}");
-    let text = decode_latin1_or_utf8(body);
-    let mut plain = None;
-    let mut html = None;
-    for part in text.split(&marker).skip(1) {
-        let part = part.trim_start_matches("\r\n").trim_start_matches('\n');
-        if part.starts_with("--") {
-            break;
-        }
-        let (header_bytes, body) = split_message(part.as_bytes());
-        let headers = unfold(&decode_latin1_or_utf8(header_bytes));
-        let rendered = part_text(&headers, body, depth + 1);
-        let kind = header(&headers, "content-type").to_ascii_lowercase();
-        if kind.contains("text/plain") && plain.is_none() {
-            plain = Some(rendered);
-        } else if kind.contains("text/html") && html.is_none() {
-            html = Some(rendered);
-        } else if plain.is_none() && html.is_none() && !rendered.trim().is_empty() {
-            plain = Some(rendered);
-        }
-    }
-    plain.or(html).unwrap_or_default()
 }
 
 fn transfer(body: &[u8], encoding: &str) -> Vec<u8> {
@@ -399,6 +443,198 @@ fn reference_ids(references: &str, in_reply_to: &str) -> Vec<String> {
     ids
 }
 
+const ALLOWED_TAGS: &[&str] = &[
+    "a", "b", "blockquote", "br", "code", "div", "em", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "li", "ol",
+    "p", "pre", "span", "strong", "table", "tbody", "td", "th", "thead", "tr", "u", "ul",
+];
+
+/// Markup the shell can put in a frame. Scripts, event handlers, and unsafe URLs are removed.
+pub fn sanitize_html(input: &str) -> String {
+    let stripped = drop_raw_elements(input);
+    let chars: Vec<char> = stripped.chars().collect();
+    let mut out = String::new();
+    let mut index = 0;
+    while index < chars.len() {
+        if chars[index] != '<' {
+            push_escaped(&mut out, chars[index]);
+            index += 1;
+            continue;
+        }
+        if chars.get(index + 1) == Some(&'!') {
+            index = chars[index..].iter().position(|ch| *ch == '>').map(|pos| index + pos + 1).unwrap_or(chars.len());
+            continue;
+        }
+        let closing = chars.get(index + 1) == Some(&'/');
+        let name_at = if closing { index + 2 } else { index + 1 };
+        let mut end = name_at;
+        while end < chars.len() && chars[end].is_ascii_alphanumeric() {
+            end += 1;
+        }
+        let name: String = chars[name_at..end].iter().collect::<String>().to_ascii_lowercase();
+        let mut cursor = end;
+        let mut quote = None;
+        while cursor < chars.len() {
+            let ch = chars[cursor];
+            if let Some(mark) = quote {
+                if ch == mark {
+                    quote = None;
+                }
+            } else if ch == '"' || ch == '\'' {
+                quote = Some(ch);
+            } else if ch == '>' {
+                break;
+            }
+            cursor += 1;
+        }
+        let raw: String = chars[end..cursor.min(chars.len())].iter().collect();
+        index = if cursor < chars.len() && chars[cursor] == '>' { cursor + 1 } else { chars.len() };
+        if !ALLOWED_TAGS.contains(&name.as_str()) {
+            continue;
+        }
+        if closing {
+            out.push_str("</");
+            out.push_str(&name);
+            out.push('>');
+            continue;
+        }
+        out.push('<');
+        out.push_str(&name);
+        write_safe_attrs(&mut out, &name, &raw);
+        if matches!(name.as_str(), "br" | "hr" | "img") {
+            out.push_str(" />");
+        } else {
+            out.push('>');
+        }
+    }
+    out
+}
+
+fn drop_raw_elements(input: &str) -> String {
+    let lower = input.to_ascii_lowercase();
+    let mut skip = Vec::new();
+    for tag in ["script", "style", "iframe", "object", "embed", "svg", "math", "form", "link", "meta", "base", "noscript"] {
+        let open = format!("<{tag}");
+        let close = format!("</{tag}");
+        let mut from = 0;
+        while let Some(rel) = lower[from..].find(&open) {
+            let start = from + rel;
+            let after = start + open.len();
+            let boundary = lower.as_bytes().get(after).copied().unwrap_or(b'>');
+            if !(boundary == b'>' || boundary == b'/' || boundary.is_ascii_whitespace()) {
+                from = start + 1;
+                continue;
+            }
+            if let Some(end_rel) = lower[after..].find(&close) {
+                let end = after + end_rel;
+                let close_end = lower[end..].find('>').map(|pos| end + pos + 1).unwrap_or(lower.len());
+                skip.push((start, close_end));
+                from = close_end;
+            } else {
+                skip.push((start, lower.len()));
+                break;
+            }
+        }
+    }
+    skip.sort_by_key(|pair| pair.0);
+    let mut out = String::new();
+    let mut index = 0;
+    for (start, end) in skip {
+        if start >= index && start <= input.len() {
+            out.push_str(&input[index..start]);
+        }
+        index = end.max(index).min(input.len());
+    }
+    if index < input.len() {
+        out.push_str(&input[index..]);
+    }
+    out
+}
+
+fn write_safe_attrs(out: &mut String, tag: &str, raw: &str) {
+    if tag == "a" {
+        if let Some(href) = attr_value(raw, "href").and_then(|value| safe_url(&value)) {
+            out.push_str(" href=\"");
+            out.push_str(&escape_attr(&href));
+            out.push('"');
+        }
+    }
+    if tag == "img" {
+        if let Some(src) = attr_value(raw, "src").and_then(|value| safe_image(&value)) {
+            out.push_str(" src=\"");
+            out.push_str(&escape_attr(&src));
+            out.push('"');
+        }
+        if let Some(alt) = attr_value(raw, "alt") {
+            out.push_str(" alt=\"");
+            out.push_str(&escape_attr(&alt));
+            out.push('"');
+        }
+    }
+}
+
+fn attr_value(raw: &str, name: &str) -> Option<String> {
+    let lower = raw.to_ascii_lowercase();
+    let needle = format!("{name}=");
+    let start = lower.find(&needle)? + needle.len();
+    let rest = &raw[start..];
+    let bytes = rest.as_bytes();
+    if bytes.first() == Some(&b'"') || bytes.first() == Some(&b'\'') {
+        let quote = bytes[0] as char;
+        let value = &rest[1..];
+        let end = value.find(quote).unwrap_or(value.len());
+        return Some(value[..end].to_string());
+    }
+    let end = rest.find(|ch: char| ch.is_whitespace() || ch == '>').unwrap_or(rest.len());
+    Some(rest[..end].to_string())
+}
+
+fn safe_url(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() || value.chars().any(|ch| ch.is_control() || ch.is_whitespace() || matches!(ch, '<' | '>' | '"' | '\'')) {
+        return None;
+    }
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("mailto:") {
+        Some(value.to_string())
+    } else {
+        None
+    }
+}
+
+fn safe_image(value: &str) -> Option<String> {
+    if safe_url(value).is_some() && value.to_ascii_lowercase().starts_with("https://") {
+        return Some(value.trim().to_string());
+    }
+    let lower = value.trim().to_ascii_lowercase();
+    let image = lower.starts_with("data:image/png")
+        || lower.starts_with("data:image/jpeg")
+        || lower.starts_with("data:image/gif")
+        || lower.starts_with("data:image/webp");
+    if image && !value.chars().any(|ch| ch.is_control() || matches!(ch, '<' | '>' | '"' | '\'')) {
+        Some(value.trim().to_string())
+    } else {
+        None
+    }
+}
+
+fn escape_attr(value: &str) -> String {
+    let mut out = String::new();
+    for ch in value.chars() {
+        push_escaped(&mut out, ch);
+    }
+    out
+}
+
+fn push_escaped(out: &mut String, ch: char) {
+    match ch {
+        '&' => out.push_str("&amp;"),
+        '<' => out.push_str("&lt;"),
+        '>' => out.push_str("&gt;"),
+        '"' => out.push_str("&quot;"),
+        _ => out.push(ch),
+    }
+}
+
 fn strip_html(html: &str) -> String {
     let lower = html.to_ascii_lowercase();
     let mut skip = Vec::new();
@@ -510,5 +746,37 @@ Content-Type: text/html\r\n\
         assert_eq!(mail.unix_secs, 946684800);
         assert!(mail.body.contains("Left the dock."));
         assert!(!mail.body.contains("HTML"));
+        assert!(mail.html.contains("<p>HTML</p>"));
+        assert!(mail.attachments.is_empty());
+    }
+
+    #[test]
+    fn html_drops_scripts_and_files_stay_attached() {
+        let raw = "\
+From: ada@studio.test\r\n\
+Subject: Notes\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=bound\r\n\
+\r\n\
+--bound\r\n\
+Content-Type: text/html; charset=utf-8\r\n\
+\r\n\
+<p onclick=\"alert(1)\">Hi <a href=\"javascript:alert(1)\">x</a> <a href=\"https://oru.test/a\">ok</a></p><script>alert(1)</script>\r\n\
+--bound\r\n\
+Content-Type: text/plain; name=\"invoice.txt\"\r\n\
+Content-Disposition: attachment; filename=\"invoice.txt\"\r\n\
+Content-Transfer-Encoding: base64\r\n\
+\r\n\
+VHJhY2tpbmc=\r\n\
+--bound--\r\n";
+        let mail = parse(raw.as_bytes());
+        assert!(mail.body.contains("Hi"));
+        assert!(!mail.html.to_ascii_lowercase().contains("<script"));
+        assert!(!mail.html.contains("onclick"));
+        assert!(!mail.html.contains("javascript:"));
+        assert!(mail.html.contains("https://oru.test/a"));
+        assert_eq!(mail.attachments.len(), 1);
+        assert_eq!(mail.attachments[0].name, "invoice.txt");
+        assert_eq!(mail.attachments[0].bytes, b"Tracking");
     }
 }

@@ -19,6 +19,6 @@ pub use imap::{
 pub use json::{
     error_json, json_string, mailboxes_json, parse_outbound, render_thread, thread_json, threads_json, Outbound,
 };
-pub use model::{Address, Mailbox, MailboxRole, Message, Thread};
+pub use model::{Address, Attachment, Mailbox, MailboxRole, Message, Thread};
 pub use smtp::{prepare_starttls, send_mail, Outgoing};
 pub use store::{MailStore, MemoryStore};

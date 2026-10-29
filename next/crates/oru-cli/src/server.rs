@@ -38,6 +38,8 @@ pub struct Opts {
 struct Reply {
     status: u16,
     content_type: &'static str,
+    /// Extra response headers, each line ending in CRLF. Empty for JSON.
+    headers: String,
     body: Vec<u8>,
 }
 
@@ -46,6 +48,7 @@ impl Reply {
         Self {
             status,
             content_type: "application/json; charset=utf-8",
+            headers: String::new(),
             body: body.into_bytes(),
         }
     }
@@ -54,7 +57,24 @@ impl Reply {
         Self {
             status: 200,
             content_type: "text/html; charset=utf-8",
+            headers: String::new(),
             body: body.as_bytes().to_vec(),
+        }
+    }
+
+    /// A download. The type stays generic so a HTML file is not rendered as a page.
+    fn download(name: &str, body: Vec<u8>) -> Self {
+        let clean: String = name
+            .chars()
+            .filter(|ch| ch.is_ascii() && !matches!(ch, '"' | '\\' | '\r' | '\n' | '/' ))
+            .take(120)
+            .collect();
+        let clean = if clean.is_empty() { "file".to_string() } else { clean };
+        Self {
+            status: 200,
+            content_type: "application/octet-stream",
+            headers: format!("Content-Disposition: attachment; filename=\"{clean}\"\r\nX-Content-Type-Options: nosniff\r\n"),
+            body,
         }
     }
 
@@ -62,6 +82,7 @@ impl Reply {
         Self {
             status,
             content_type: "text/plain; charset=utf-8",
+            headers: String::new(),
             body: Vec::new(),
         }
     }
@@ -195,6 +216,7 @@ fn handle(hub: &mut Hub, method: &str, path: &str, body: &str, ui: Option<&Path>
             Reply::json(200, threads_json(&hub.store, id))
         }
         ("POST", ["api", "mailboxes", id, "older"]) if safe_id(id) => load_older(hub, id),
+        ("GET", ["api", "attachments", id]) if safe_id(id) => attachment(hub, id),
         ("GET", ["api", "threads", id]) if safe_id(id) => match thread_json(&hub.store, id) {
             Some(document) => Reply::json(200, document),
             None => Reply::json(404, error_json("no such thread")),
@@ -283,6 +305,13 @@ fn load_older(hub: &mut Hub, id: &str) -> Reply {
             hub.last_error = error.clone();
             Reply::json(502, error_json(&error))
         }
+    }
+}
+
+fn attachment(hub: &Hub, id: &str) -> Reply {
+    match hub.store.attachment(id) {
+        Some(file) => Reply::download(&file.name, file.bytes.clone()),
+        None => Reply::json(404, error_json("no such file")),
     }
 }
 
@@ -497,6 +526,7 @@ fn serve_file(path: &str, ui: Option<&Path>) -> Reply {
         Ok(bytes) => Reply {
             status: 200,
             content_type: content_type(&file_real),
+            headers: String::new(),
             body: bytes,
         },
         Err(_) => Reply::json(404, error_json("not found")),
@@ -607,11 +637,12 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 fn encode(reply: &Reply) -> Vec<u8> {
     let head = format!(
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {len}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {len}\r\n{extra}Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nConnection: close\r\n\r\n",
         status = reply.status,
         reason = reason(reply.status),
         content_type = reply.content_type,
         len = reply.body.len(),
+        extra = reply.headers,
     );
     let mut bytes = head.into_bytes();
     bytes.extend_from_slice(&reply.body);
@@ -786,6 +817,14 @@ mod tests {
         let older_text = std::str::from_utf8(&older.body).unwrap();
         assert!(older_text.contains("Studio notes"));
         assert!(older_text.contains("Shipment"));
+        let file = handle(&mut hub, "GET", "/api/attachments/m2:0", "", None);
+        assert_eq!(file.status, 200);
+        assert_eq!(file.body, b"Tracking is on the invoice.\n");
+        let encoded = encode(&file);
+        let head = String::from_utf8_lossy(&encoded);
+        assert!(head.contains("Content-Disposition: attachment; filename=\"invoice.txt\""));
+        assert!(head.contains("application/octet-stream"));
+        assert_eq!(handle(&mut hub, "GET", "/api/attachments/missing:0", "", None).status, 404);
         let bad = handle(&mut hub, "POST", "/api/account", "{}", None);
         assert_eq!(bad.status, 400);
         assert!(hub.account.is_none());
