@@ -9,6 +9,8 @@ use crate::{Address, Mailbox, MailboxRole, MemoryStore, Message, Thread};
 
 const MAX_LITERAL: usize = 2_000_000;
 const FETCH_TAIL: u32 = 40;
+/// A sync opens this many mailboxes. `\Noselect`, `\All`, and `\Deleted` stay out of the list.
+const MAILBOX_CAP: usize = 40;
 
 pub struct Synced {
     pub store: MemoryStore,
@@ -42,7 +44,7 @@ pub fn pull_session<S: Read + Write>(stream: &mut S, user: &str, password: &str)
     let mut names = Vec::new();
     let mut sent_mailbox = String::from("Sent");
     let mut used = Vec::new();
-    for mailbox in listed.into_iter().take(8) {
+    for mailbox in listed.into_iter().take(MAILBOX_CAP) {
         if mailbox.role == MailboxRole::Sent {
             sent_mailbox = mailbox.imap_name.clone();
         }
@@ -282,8 +284,11 @@ impl<'a, S: Read + Write> Proto<'a, S> {
             let Some((flags, name)) = parse_list(text.trim()) else {
                 continue;
             };
-            if flags.iter().any(|flag| flag.eq_ignore_ascii_case("\\Noselect") || flag.eq_ignore_ascii_case("\\All"))
-            {
+            if flags.iter().any(|flag| {
+                flag.eq_ignore_ascii_case("\\Noselect")
+                    || flag.eq_ignore_ascii_case("\\All")
+                    || flag.eq_ignore_ascii_case("\\Deleted")
+            }) {
                 continue;
             }
             let name = decode_utf7(&name);
@@ -1401,6 +1406,61 @@ mod tests {
         let uid = append_sent(&mut client, "ada@studio.test", "secret", "Drafts", b"Subject: Hold\r\n\r\nLater\r\n").unwrap();
         assert_eq!(uid, Some(15));
         assert_eq!(append_uid("OK done"), None);
+    }
+
+    #[test]
+    fn sync_opens_more_than_eight_mailboxes_and_skips_special_ones() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_nodelay(true).ok();
+            write(&mut stream, b"* OK test\r\n");
+            loop {
+                let line = read_line(&mut stream);
+                let tag = line.split_whitespace().next().unwrap_or("a").to_string();
+                let upper = line.to_ascii_uppercase();
+                if upper.contains(" LOGIN ") {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains(" LIST ") {
+                    for item in [
+                        r#"* LIST (\HasNoChildren) "/" "INBOX""#,
+                        r#"* LIST (\Sent) "/" "Sent""#,
+                        r#"* LIST (\HasNoChildren) "/" "Projects""#,
+                        r#"* LIST (\HasNoChildren) "/" "Receipts""#,
+                        r#"* LIST (\HasNoChildren) "/" "Travel""#,
+                        r#"* LIST (\HasNoChildren) "/" "Family""#,
+                        r#"* LIST (\HasNoChildren) "/" "News""#,
+                        r#"* LIST (\HasNoChildren) "/" "Later""#,
+                        r#"* LIST (\HasNoChildren) "/" "Notes""#,
+                        r#"* LIST (\Noselect) "/" "Hidden""#,
+                        r#"* LIST (\All) "/" "All Mail""#,
+                        r#"* LIST (\Deleted) "/" "Bin""#,
+                    ] {
+                        write(&mut stream, format!("{item}\r\n").as_bytes());
+                    }
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains(" SELECT ") {
+                    write(&mut stream, b"* 0 EXISTS\r\n");
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains("LOGOUT") {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                    break;
+                } else {
+                    write(&mut stream, format!("{tag} BAD\r\n").as_bytes());
+                }
+            }
+        });
+        let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client.set_nodelay(true).ok();
+        client.set_read_timeout(Some(Duration::from_secs(5))).ok();
+        read_greeting(&mut client).unwrap();
+        let synced = pull_session(&mut client, "ada@studio.test", "secret").unwrap();
+        let names: Vec<String> = synced.store.mailboxes().into_iter().map(|mailbox| mailbox.name).collect();
+        assert!(names.len() > 8, "{names:?}");
+        assert_eq!(names.len(), 9, "{names:?}");
+        assert!(names.iter().any(|name| name == "Notes"));
+        assert!(names.iter().all(|name| name != "Hidden" && name != "All Mail" && name != "Bin"));
     }
 
     fn script(stream: &mut std::net::TcpStream, raw: &[u8]) {
