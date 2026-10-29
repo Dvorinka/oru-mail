@@ -16,6 +16,16 @@ pub fn mark_seen(account: &Account, mailbox: &str, uid: &str) -> Result<(), Stri
     set_seen(&mut stream, &account.email, &account.password, mailbox, uid)
 }
 
+pub fn mark_unseen(account: &Account, mailbox: &str, uid: &str) -> Result<(), String> {
+    let mut stream = open_imap(account)?;
+    oru_core::set_unseen(&mut stream, &account.email, &account.password, mailbox, uid)
+}
+
+pub fn mark_deleted(account: &Account, mailbox: &str, uid: &str) -> Result<(), String> {
+    let mut stream = open_imap(account)?;
+    oru_core::set_deleted(&mut stream, &account.email, &account.password, mailbox, uid)
+}
+
 pub fn submit(account: &Account, to: &str, raw: &[u8]) -> Result<(), String> {
     let connector = tls()?;
     let mail = Outgoing {

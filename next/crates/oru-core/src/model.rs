@@ -47,6 +47,8 @@ pub struct Mailbox {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
     pub id: String,
+    /// Message-ID without brackets. Reply uses it as In-Reply-To.
+    pub message_id: String,
     pub from: Address,
     /// Recipients. The shell shows the first address.
     pub to: Vec<Address>,

@@ -55,6 +55,7 @@ impl MemoryStore {
             subject: "Studio notes".into(),
             messages: vec![Message {
                 id: "m1".into(),
+                message_id: "m1@studio.test".into(),
                 from: Address::new("Ada Marin", "ada@studio.test"),
                 to: vec![you.clone()],
                 subject: "Studio notes".into(),
@@ -70,6 +71,7 @@ impl MemoryStore {
             subject: "Shipment 441".into(),
             messages: vec![Message {
                 id: "m2".into(),
+                message_id: "m2@northwind.test".into(),
                 from: Address::new("Northwind", "desk@northwind.test"),
                 to: vec![you.clone()],
                 subject: "Shipment 441".into(),
@@ -85,6 +87,7 @@ impl MemoryStore {
             subject: "Re: Fold sample".into(),
             messages: vec![Message {
                 id: "m3".into(),
+                message_id: "m3@oru.test".into(),
                 from: you,
                 to: vec![Address::new("Ada Marin", "ada@studio.test")],
                 subject: "Re: Fold sample".into(),
@@ -119,6 +122,7 @@ impl MemoryStore {
             subject: subject.to_string(),
             messages: vec![Message {
                 id: format!("nm{id}"),
+                message_id: format!("nm{id}@oru.local"),
                 from,
                 to: vec![Address::new(to, to)],
                 subject: subject.to_string(),
@@ -141,6 +145,23 @@ impl MemoryStore {
             message.unread = false;
         }
         true
+    }
+
+    /// Marks every message unread. The latest one is enough for the row mark.
+    pub fn mark_unread(&mut self, thread_id: &str) -> bool {
+        let Some(thread) = self.threads.iter_mut().find(|thread| thread.id == thread_id) else {
+            return false;
+        };
+        for message in &mut thread.messages {
+            message.unread = true;
+        }
+        true
+    }
+
+    pub fn remove_thread(&mut self, thread_id: &str) -> bool {
+        let before = self.threads.len();
+        self.threads.retain(|thread| thread.id != thread_id);
+        self.threads.len() != before
     }
 }
 

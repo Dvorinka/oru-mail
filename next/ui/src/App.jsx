@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 async function getJson(path, options) {
   const response = await fetch(path, options);
@@ -52,7 +52,8 @@ export default function App() {
   const [offline, setOffline] = useState(false);
   const [problem, setProblem] = useState('');
   const [compose, setCompose] = useState(false);
-  const [draft, setDraft] = useState({ to: '', subject: '', body: '' });
+  const [draft, setDraft] = useState({ to: '', subject: '', body: '', inReplyTo: '' });
+  const seen = useRef('');
   const [sending, setSending] = useState(false);
   const [mode, setMode] = useState('demo');
   const [email, setEmail] = useState('');
@@ -129,13 +130,16 @@ export default function App() {
 
   useEffect(() => {
     if (!detail || detail.id !== threadId || !detail.unread) return;
+    if (seen.current === threadId || seen.current === 'keep:' + threadId) return;
+    seen.current = threadId;
     let gone = false;
-    getJson('/api/threads/' + encodeURIComponent(threadId) + '/read', { method: 'POST' })
+    const id = threadId;
+    getJson('/api/threads/' + encodeURIComponent(id) + '/read', { method: 'POST' })
       .then(() => {
-        if (gone) return;
-        setThreads((rows) => rows.map((row) => (row.id === threadId ? { ...row, unread: false } : row)));
+        if (gone || seen.current !== id) return;
+        setThreads((rows) => rows.map((row) => (row.id === id ? { ...row, unread: false } : row)));
         setDetail((row) =>
-          row && row.id === threadId
+          row && row.id === id
             ? { ...row, unread: false, messages: row.messages.map((message) => ({ ...message, unread: false })) }
             : row
         );
@@ -177,7 +181,7 @@ export default function App() {
       const rows = await getJson('/api/mailboxes/sent/threads');
       setThreads(rows);
       setLoaded(true);
-      setDraft({ to: '', subject: '', body: '' });
+      setDraft({ to: '', subject: '', body: '', inReplyTo: '' });
       setCompose(false);
       setMailboxId('sent');
       setThreadId(created.id);
@@ -212,6 +216,62 @@ export default function App() {
       }
     } finally {
       setSyncing(false);
+    }
+  }
+
+  function latestMessage(thread) {
+    return thread.messages.reduce((best, message) => (message.unixSecs >= best.unixSecs ? message : best));
+  }
+
+  function replyTo(thread) {
+    if (!thread.messages || thread.messages.length === 0) return;
+    const message = latestMessage(thread);
+    const quoted = (message.body || '')
+      .split('\n')
+      .map((line) => '> ' + line)
+      .join('\n');
+    const subject = thread.subject.startsWith('Re:') ? thread.subject : 'Re: ' + thread.subject;
+    setDraft({
+      to: mailboxId === 'sent' ? thread.toEmail || message.toEmail || '' : thread.fromEmail || message.fromEmail || '',
+      subject,
+      body: quoted.trim() ? '\n\n' + quoted : '',
+      inReplyTo: message.messageId || '',
+    });
+    setAccountOpen(false);
+    setCompose(true);
+  }
+
+  async function changeThread(kind) {
+    setProblem('');
+    if (kind === 'unread') seen.current = 'keep:' + threadId;
+    try {
+      await getJson('/api/threads/' + encodeURIComponent(threadId) + '/' + kind, { method: 'POST' });
+      if (kind === 'trash') {
+        await reload(mailboxId);
+        return;
+      }
+      setThreads((rows) => rows.map((row) => (row.id === threadId ? { ...row, unread: true } : row)));
+      setDetail((row) =>
+        row && row.id === threadId
+          ? { ...row, unread: true, messages: row.messages.map((message) => ({ ...message, unread: true })) }
+          : row
+      );
+    } catch (error) {
+      setProblem(error.message);
+    }
+  }
+
+  async function signOut() {
+    setProblem('');
+    try {
+      const status = await getJson('/api/sign-out', { method: 'POST' });
+      setMode(status.mode || 'demo');
+      setEmail('');
+      setAccountOpen(false);
+      setSignIn({ email: '', password: '', name: '', imapHost: '', imapPort: '993', smtpHost: '', smtpPort: '587' });
+      await reload('inbox');
+    } catch (error) {
+      setProblem(error.message);
     }
   }
 
@@ -291,6 +351,7 @@ export default function App() {
             onClick={() => {
               setCompose(false);
               setAccountOpen(true);
+              setSignIn((current) => (current.email ? current : { ...current, email }));
             }}
           >
             {mode === 'account' ? 'Account' : 'Sign in'}
@@ -338,7 +399,7 @@ export default function App() {
         {problem ? <p className="problem">{problem}</p> : null}
         {accountOpen ? (
           <form className="form" onSubmit={signInSubmit}>
-            <h1>Sign in</h1>
+            <h1>{mode === 'account' ? 'Account' : 'Sign in'}</h1>
             <p className="note">
               Gmail and Outlook need an app password. It stays in the account file on this computer.
             </p>
@@ -397,6 +458,11 @@ export default function App() {
               <button className="ghost" type="button" onClick={() => setAccountOpen(false)}>
                 Cancel
               </button>
+              {mode === 'account' ? (
+                <button className="ghost" type="button" onClick={signOut}>
+                  Sign out
+                </button>
+              ) : null}
             </div>
           </form>
         ) : compose ? (
@@ -452,19 +518,14 @@ export default function App() {
             )}
             {open ? (
               <div className="actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDraft({
-                      to: mailboxId === 'sent' ? open.toEmail || '' : open.fromEmail || '',
-                      subject: open.subject.startsWith('Re:') ? open.subject : 'Re: ' + open.subject,
-                      body: '',
-                    });
-                    setAccountOpen(false);
-                    setCompose(true);
-                  }}
-                >
+                <button type="button" onClick={() => replyTo(open)}>
                   Reply
+                </button>
+                <button className="ghost" type="button" onClick={() => changeThread('unread')}>
+                  Unread
+                </button>
+                <button className="ghost" type="button" onClick={() => changeThread('trash')}>
+                  Trash
                 </button>
               </div>
             ) : null}

@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use oru_core::{
     account_json, error_json, json_string, mailboxes_json, parse_account, parse_outbound, raw_message, render_thread,
-    thread_json, threads_json, Account, Address, MemoryStore, Synced,
+    thread_json, threads_json, Account, Address, MailStore, MemoryStore, Synced,
 };
 
 const FALLBACK: &str = r#"<!doctype html>
@@ -199,6 +199,9 @@ fn handle(hub: &mut Hub, method: &str, path: &str, body: &str, ui: Option<&Path>
             None => Reply::json(404, error_json("no such thread")),
         },
         ("POST", ["api", "threads", id, "read"]) if safe_id(id) => mark_read(hub, id),
+        ("POST", ["api", "threads", id, "unread"]) if safe_id(id) => mark_unread(hub, id),
+        ("POST", ["api", "threads", id, "trash"]) if safe_id(id) => trash(hub, id),
+        ("POST", ["api", "sign-out"]) => sign_out(hub),
         ("POST", ["api", "sync"]) => refresh(hub),
         ("POST", ["api", "account"]) => save_and_sync(hub, body),
         ("POST", ["api", "messages"]) => send_message(hub, body),
@@ -261,18 +264,77 @@ fn mark_read(hub: &mut Hub, id: &str) -> Reply {
     if !hub.store.mark_read(id) {
         return Reply::json(404, error_json("no such thread"));
     }
-    if let Some(account) = hub.account.clone() {
-        if let Some((mailbox_id, uid)) = id.split_once(':') {
-            if let Some(imap_name) = hub.names.get(mailbox_id).cloned() {
-                if let Err(error) = crate::net::mark_seen(&account, &imap_name, uid) {
-                    hub.last_error = error;
-                }
-            }
-        }
+    flag_on_server(hub, id, ServerFlag::Seen);
+    thread_reply(hub, id)
+}
+
+fn mark_unread(hub: &mut Hub, id: &str) -> Reply {
+    if !hub.store.mark_unread(id) {
+        return Reply::json(404, error_json("no such thread"));
     }
+    flag_on_server(hub, id, ServerFlag::Unseen);
+    thread_reply(hub, id)
+}
+
+fn trash(hub: &mut Hub, id: &str) -> Reply {
+    if hub.store.thread(id).is_none() {
+        return Reply::json(404, error_json("no such thread"));
+    }
+    flag_on_server(hub, id, ServerFlag::Deleted);
+    if !hub.store.remove_thread(id) {
+        return Reply::json(404, error_json("no such thread"));
+    }
+    Reply::json(200, "{\"ok\":true}".into())
+}
+
+fn sign_out(hub: &mut Hub) -> Reply {
+    if let Err(error) = forget_account(&account_path()) {
+        return Reply::json(500, error_json(&error));
+    }
+    *hub = Hub::demo();
+    Reply::json(200, status_json(hub))
+}
+
+fn thread_reply(hub: &Hub, id: &str) -> Reply {
     match thread_json(&hub.store, id) {
         Some(document) => Reply::json(200, document),
         None => Reply::json(404, error_json("no such thread")),
+    }
+}
+
+enum ServerFlag {
+    Seen,
+    Unseen,
+    Deleted,
+}
+
+/// Updates every message in the thread whose id is `mailbox:uid`.
+/// Demo ids have no colon, so this stays on the local store.
+fn flag_on_server(hub: &mut Hub, id: &str, flag: ServerFlag) {
+    let Some(account) = hub.account.clone() else {
+        return;
+    };
+    let Some(thread) = hub.store.thread(id) else {
+        return;
+    };
+    for message in thread.messages {
+        let Some((slug, uid)) = message.id.split_once(':') else {
+            continue;
+        };
+        if !uid.chars().all(|ch| ch.is_ascii_digit()) {
+            continue;
+        }
+        let Some(imap_name) = hub.names.get(slug).cloned() else {
+            continue;
+        };
+        let result = match flag {
+            ServerFlag::Seen => crate::net::mark_seen(&account, &imap_name, uid),
+            ServerFlag::Unseen => crate::net::mark_unseen(&account, &imap_name, uid),
+            ServerFlag::Deleted => crate::net::mark_deleted(&account, &imap_name, uid),
+        };
+        if let Err(error) = result {
+            hub.last_error = error;
+        }
     }
 }
 
@@ -285,7 +347,14 @@ fn send_message(hub: &mut Hub, body: &str) -> Reply {
         let thread = hub.store.send(&message.to, &message.subject, &message.body);
         return Reply::json(201, render_thread(&thread));
     };
-    let raw = raw_message(&account.name, &account.email, &message.to, &message.subject, &message.body);
+    let raw = raw_message(
+        &account.name,
+        &account.email,
+        &message.to,
+        &message.subject,
+        &message.body,
+        &message.in_reply_to,
+    );
     if let Err(error) = crate::net::submit(&account, &message.to, &raw) {
         hub.last_error = error.clone();
         return Reply::json(502, error_json(&error));
@@ -307,6 +376,14 @@ fn read_account() -> Result<Option<Account>, String> {
     }
     let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
     parse_account(&text).map(Some).map_err(|error| error.to_string())
+}
+
+fn forget_account(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 fn write_account(account: &Account) -> Result<(), String> {
@@ -646,6 +723,33 @@ mod tests {
         let bad = handle(&mut hub, "POST", "/api/account", "{}", None);
         assert_eq!(bad.status, 400);
         assert!(hub.account.is_none());
+    }
+
+    #[test]
+    fn trash_unread_and_sign_out_stay_on_the_demo_store() {
+        let mut hub = Hub::demo();
+        let unread = handle(&mut hub, "POST", "/api/threads/t2/unread", "", None);
+        assert_eq!(unread.status, 200);
+        assert!(std::str::from_utf8(&unread.body).unwrap().contains("\"unread\":true"));
+        let trashed = handle(&mut hub, "POST", "/api/threads/t1/trash", "", None);
+        assert_eq!(trashed.status, 200);
+        assert!(hub.store.thread("t1").is_none());
+        assert!(hub.store.thread("t2").unwrap().unread());
+
+        let path = env::temp_dir().join(format!("oru-signout-{}.json", std::process::id()));
+        fs::write(&path, "not-a-real-password").unwrap();
+        let previous = env::var_os("ORU_ACCOUNT");
+        env::set_var("ORU_ACCOUNT", &path);
+        let reply = handle(&mut hub, "POST", "/api/sign-out", "", None);
+        match previous {
+            Some(value) => env::set_var("ORU_ACCOUNT", value),
+            None => env::remove_var("ORU_ACCOUNT"),
+        }
+        let _ = fs::remove_file(&path);
+        assert_eq!(reply.status, 200);
+        assert!(std::str::from_utf8(&reply.body).unwrap().contains("\"mode\":\"demo\""));
+        assert!(hub.account.is_none());
+        assert!(hub.store.thread("t1").is_some());
     }
 
     #[test]

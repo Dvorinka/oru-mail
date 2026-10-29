@@ -79,13 +79,44 @@ pub fn set_seen<S: Read + Write>(
     mailbox: &str,
     uid: &str,
 ) -> Result<(), String> {
+    store_flag(stream, user, password, mailbox, uid, "+FLAGS.SILENT (\\Seen)")
+}
+
+pub fn set_unseen<S: Read + Write>(
+    stream: &mut S,
+    user: &str,
+    password: &str,
+    mailbox: &str,
+    uid: &str,
+) -> Result<(), String> {
+    store_flag(stream, user, password, mailbox, uid, "-FLAGS.SILENT (\\Seen)")
+}
+
+pub fn set_deleted<S: Read + Write>(
+    stream: &mut S,
+    user: &str,
+    password: &str,
+    mailbox: &str,
+    uid: &str,
+) -> Result<(), String> {
+    store_flag(stream, user, password, mailbox, uid, "+FLAGS.SILENT (\\Deleted)")
+}
+
+fn store_flag<S: Read + Write>(
+    stream: &mut S,
+    user: &str,
+    password: &str,
+    mailbox: &str,
+    uid: &str,
+    change: &str,
+) -> Result<(), String> {
     if !uid.chars().all(|ch| ch.is_ascii_digit()) {
         return Err("bad uid".into());
     }
     let mut proto = Proto::new(stream);
     proto.login(user, password)?;
     proto.select(mailbox)?;
-    proto.exchange(&format!("UID STORE {uid} +FLAGS.SILENT (\\Seen)"))?;
+    proto.exchange(&format!("UID STORE {uid} {change}"))?;
     let _ = proto.exchange("LOGOUT");
     Ok(())
 }
@@ -353,7 +384,11 @@ fn parse_fetch(chunk: &[u8]) -> Option<Fetched> {
     let raw = chunk.get(marker..marker + size)?.to_vec();
     let prefix = String::from_utf8_lossy(&chunk[..marker]);
     let uid = uid_of(&prefix).or_else(|| sequence_of(&text))?;
-    let unread = !prefix.to_ascii_uppercase().contains("\\SEEN");
+    let flags = prefix.to_ascii_uppercase();
+    if flags.contains("\\DELETED") {
+        return None;
+    }
+    let unread = !flags.contains("\\SEEN");
     Some(Fetched {
         uid,
         unread,
@@ -570,6 +605,7 @@ fn remember(by_id: &mut Vec<(String, usize)>, message_id: &str, index: usize) {
 fn message_from(slug: &str, item: &Fetched) -> Message {
     Message {
         id: format!("{slug}:{}", item.uid),
+        message_id: item.mail.message_id.clone(),
         from: item.mail.from.clone(),
         to: if item.mail.to.is_empty() {
             vec![Address::new("", "")]
@@ -633,7 +669,7 @@ pub fn decode_utf7(value: &str) -> String {
     out
 }
 
-pub fn raw_message(from_name: &str, from_email: &str, to: &str, subject: &str, body: &str) -> Vec<u8> {
+pub fn raw_message(from_name: &str, from_email: &str, to: &str, subject: &str, body: &str, in_reply_to: &str) -> Vec<u8> {
     let from = if from_name.is_empty() || from_name == from_email {
         format!("<{from_email}>")
     } else if from_name.is_ascii() {
@@ -646,11 +682,20 @@ pub fn raw_message(from_name: &str, from_email: &str, to: &str, subject: &str, b
         subject_header = format!("=?UTF-8?B?{}?=", crate::base64::encode(subject_header.as_bytes()));
     }
     let date = chrono_now();
+    let reply = reply_headers(in_reply_to);
     format!(
-        "From: {from}\r\nTo: <{to}>\r\nSubject: {subject_header}\r\nDate: {date}\r\nMessage-ID: <{id}>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n{body}\r\n",
+        "From: {from}\r\nTo: <{to}>\r\nSubject: {subject_header}\r\nDate: {date}\r\nMessage-ID: <{id}>\r\n{reply}MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n{body}\r\n",
         id = format!("oru.{}@oru", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)),
     )
     .into_bytes()
+}
+
+fn reply_headers(in_reply_to: &str) -> String {
+    let id = in_reply_to.trim().trim_matches(|ch| ch == '<' || ch == '>');
+    if id.is_empty() || id.contains(['\r', '\n']) {
+        return String::new();
+    }
+    format!("In-Reply-To: <{id}>\r\nReferences: <{id}>\r\n")
 }
 
 fn chrono_now() -> String {
@@ -724,6 +769,21 @@ mod tests {
         assert_eq!(threads.len(), 1);
         assert!(threads[0].unread());
         assert_eq!(threads[0].subject, "Studio notes");
+        assert_eq!(threads[0].messages[0].message_id, "m1@studio.test");
+        assert!(threads[0].messages.iter().all(|message| message.subject != "Gone"));
+        let replied = String::from_utf8(raw_message(
+            "Ada",
+            "ada@studio.test",
+            "you@oru.test",
+            "Re: Studio",
+            "Hello",
+            "m1@studio.test",
+        ))
+        .unwrap();
+        assert!(replied.contains("In-Reply-To: <m1@studio.test>\r\n"));
+        assert!(replied.contains("References: <m1@studio.test>\r\n"));
+        let fresh = String::from_utf8(raw_message("Ada", "ada@studio.test", "you@oru.test", "Studio", "Hello", "")).unwrap();
+        assert!(!fresh.contains("In-Reply-To"));
         assert_eq!(synced.sent_mailbox, "Sent");
         assert!(synced.names.iter().any(|(slug, _)| slug == "inbox"));
         assert!(format_rfc5322(0).contains("01 Jan 1970"));
@@ -743,13 +803,17 @@ mod tests {
                 write(stream, format!("{tag} OK\r\n").as_bytes());
             } else if upper.contains(" SELECT ") {
                 if upper.contains("INBOX") {
-                    write(stream, b"* 1 EXISTS\r\n");
+                    write(stream, b"* 2 EXISTS\r\n");
                 } else {
                     write(stream, b"* 0 EXISTS\r\n");
                 }
                 write(stream, format!("{tag} OK\r\n").as_bytes());
             } else if upper.contains(" FETCH ") {
-                write(stream, format!("* 1 FETCH (UID 7 FLAGS () BODY[] {{{}}}\r\n", raw.len()).as_bytes());
+                let gone = b"From: Ada <ada@studio.test>\r\nSubject: Gone\r\nMessage-ID: <gone@studio.test>\r\n\r\nDeleted.\r\n";
+                write(stream, format!("* 1 FETCH (UID 6 FLAGS (\\Deleted) BODY[] {{{}}}\r\n", gone.len()).as_bytes());
+                stream.write_all(gone).unwrap();
+                write(stream, b")\r\n");
+                write(stream, format!("* 2 FETCH (UID 7 FLAGS () BODY[] {{{}}}\r\n", raw.len()).as_bytes());
                 stream.write_all(raw).unwrap();
                 write(stream, b")\r\n");
                 write(stream, format!("{tag} OK\r\n").as_bytes());

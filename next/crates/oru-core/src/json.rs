@@ -9,6 +9,8 @@ pub struct Outbound {
     pub to: String,
     pub subject: String,
     pub body: String,
+    /// Message-ID this send answers, without brackets. Empty for a new message.
+    pub in_reply_to: String,
 }
 
 pub fn mailboxes_json(store: &impl MailStore) -> String {
@@ -64,6 +66,7 @@ pub fn parse_outbound(input: &str) -> Result<Outbound, &'static str> {
     let mut to = None;
     let mut subject = None;
     let mut body = None;
+    let mut in_reply_to = None;
     loop {
         skip_ws(bytes, &mut index);
         if index < bytes.len() && bytes[index] == b'}' {
@@ -82,6 +85,7 @@ pub fn parse_outbound(input: &str) -> Result<Outbound, &'static str> {
             "to" => to = Some(value),
             "subject" => subject = Some(value),
             "body" => body = Some(value),
+            "inReplyTo" => in_reply_to = Some(value),
             _ => {}
         }
         skip_ws(bytes, &mut index);
@@ -111,6 +115,7 @@ pub fn parse_outbound(input: &str) -> Result<Outbound, &'static str> {
         to,
         subject,
         body: body.unwrap_or_default(),
+        in_reply_to: in_reply_to.unwrap_or_default().trim().trim_matches(|ch| ch == '<' || ch == '>').to_string(),
     })
 }
 
@@ -184,6 +189,8 @@ fn push_message(out: &mut String, message: &Message) {
     };
     out.push('{');
     field(out, "id", &message.id);
+    out.push(',');
+    field(out, "messageId", &message.message_id);
     out.push(',');
     field(out, "from", &message.from.name);
     out.push(',');
@@ -383,6 +390,7 @@ mod tests {
         let one = thread_json(&store, "t1").unwrap();
         assert!(one.contains("The rail stays dark"));
         assert!(one.contains("\"messages\":["));
+        assert!(one.contains("\"messageId\":\"m1@studio.test\""));
     }
 
     #[test]
@@ -394,6 +402,7 @@ mod tests {
             subject: "Say \"hi\"".into(),
             messages: vec![crate::Message {
                 id: "mq".into(),
+                message_id: "mq@studio.test".into(),
                 from: crate::Address::new("Ada", "ada@studio.test"),
                 to: vec![],
                 subject: "Say \"hi\"".into(),
@@ -415,6 +424,10 @@ mod tests {
             .unwrap();
         assert_eq!(parsed.subject, "Say \"hi\"");
         assert_eq!(parsed.body, "line\n2");
+        assert_eq!(parsed.in_reply_to, "");
+        let reply = parse_outbound(r#"{"to":"ada@studio.test","subject":"Re: Hi","body":"","inReplyTo":"<m1@studio.test>"}"#)
+            .unwrap();
+        assert_eq!(reply.in_reply_to, "m1@studio.test");
         assert!(parse_outbound(r#"{"to":"not-an-email","subject":"Hi","body":""}"#).is_err());
         assert!(parse_outbound(r#"{"to":"a@b.c","subject":"  ","body":""}"#).is_err());
         let letter = parse_outbound(r#"{"to":"a@b.c","subject":"\u0041","body":""}"#).unwrap();
