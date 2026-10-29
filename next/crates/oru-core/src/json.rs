@@ -51,6 +51,25 @@ pub fn render_thread(thread: &Thread) -> String {
     out
 }
 
+/// `q` is the text to find in the open mailbox. `before` is the uid watermark for the next page.
+pub fn parse_search(input: &str) -> Result<(String, Option<u32>), &'static str> {
+    let pairs = parse_flat(input)?;
+    let query = pairs
+        .iter()
+        .find(|(key, _)| key == "q")
+        .map(|(_, value)| value.trim().to_string())
+        .unwrap_or_default();
+    if query.is_empty() || query.len() >= 200 || query.contains(['\r', '\n', '\0']) {
+        return Err("bad search");
+    }
+    let before = match pairs.iter().find(|(key, _)| key == "before") {
+        None => None,
+        Some((_, value)) if value.trim().is_empty() => None,
+        Some((_, value)) => Some(value.trim().parse::<u32>().map_err(|_| "bad search")?),
+    };
+    Ok((query, before))
+}
+
 pub fn error_json(message: &str) -> String {
     let mut out = String::from("{\"error\":");
     push_string(&mut out, message);
@@ -492,5 +511,10 @@ mod tests {
         assert!(parse_draft(r#"{"to":"not-an-email","subject":"Hi","body":""}"#).is_err());
         let letter = parse_outbound(r#"{"to":"a@b.c","subject":"\u0041","body":""}"#).unwrap();
         assert_eq!(letter.subject, "A");
+        let (query, before) = parse_search(r#"{"q":" invoice ","before":"12"}"#).unwrap();
+        assert_eq!(query, "invoice");
+        assert_eq!(before, Some(12));
+        assert!(parse_search(r#"{"q":""}"#).is_err());
+        assert!(parse_search(r#"{"q":"line\nbreak"}"#).is_err());
     }
 }

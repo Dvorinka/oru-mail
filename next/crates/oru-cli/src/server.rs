@@ -16,7 +16,8 @@ use std::thread;
 use std::time::Duration;
 
 use oru_core::{
-    account_json, error_json, json_string, mailboxes_json, parse_account, parse_draft, parse_outbound, raw_message,
+    account_json, error_json, json_string, mailboxes_json, parse_account, parse_draft, parse_outbound, parse_search,
+    raw_message,
     render_thread,
     thread_json, thread_list_json, threads_json, Account, Address, MailStore, MailboxRole, MemoryStore, Synced,
 };
@@ -218,6 +219,8 @@ fn handle(hub: &mut Hub, method: &str, path: &str, body: &str, ui: Option<&Path>
             Reply::json(200, threads_json(&hub.store, id))
         }
         ("POST", ["api", "mailboxes", id, "older"]) if safe_id(id) => load_older(hub, id),
+        ("POST", ["api", "mailboxes", id, "search"]) if safe_id(id) => search_box(hub, id, body),
+        ("POST", ["api", "starred", "search"]) => search_box(hub, "starred", body),
         ("GET", ["api", "attachments", id]) if safe_id(id) => attachment(hub, id),
         ("GET", ["api", "threads", id]) if safe_id(id) => match thread_json(&hub.store, id) {
             Some(document) => Reply::json(200, document),
@@ -311,6 +314,34 @@ fn load_older(hub: &mut Hub, id: &str) -> Reply {
             Reply::json(502, error_json(&error))
         }
     }
+}
+
+/// Signed-in mail runs IMAP SEARCH on that mailbox. The demo store searches
+/// messages already stored, including the body, so a hit does not have to be on screen.
+fn search_box(hub: &mut Hub, id: &str, body: &str) -> Reply {
+    let (query, before) = match parse_search(body) {
+        Ok(parsed) => parsed,
+        Err(reason) => return Reply::json(400, error_json(reason)),
+    };
+    if id != "starred" {
+        if let Some(account) = hub.account.clone() {
+            if let Some(imap_name) = hub.names.get(id).cloned() {
+                return match crate::net::search(&account, &imap_name, id, &query, before) {
+                    Ok(threads) => {
+                        for thread in &threads {
+                            hub.store.insert_thread(thread.clone());
+                        }
+                        Reply::json(200, thread_list_json(&threads))
+                    }
+                    Err(error) => {
+                        hub.last_error = error.clone();
+                        Reply::json(502, error_json(&error))
+                    }
+                };
+            }
+        }
+    }
+    Reply::json(200, thread_list_json(&hub.store.search(id, &query, before)))
 }
 
 fn attachment(hub: &Hub, id: &str) -> Reply {
@@ -885,6 +916,16 @@ mod tests {
         assert_eq!(cleared.status, 200);
         assert!(std::str::from_utf8(&cleared.body).unwrap().contains("\"starred\":false"));
         assert_eq!(handle(&mut hub, "POST", "/api/threads/missing/star", "", None).status, 404);
+        let found = handle(&mut hub, "POST", "/api/mailboxes/inbox/search", r#"{"q":"invoice"}"#, None);
+        assert_eq!(found.status, 200);
+        let found_text = std::str::from_utf8(&found.body).unwrap();
+        assert!(found_text.contains("Shipment"));
+        assert!(!found_text.contains("Studio notes"));
+        let none = handle(&mut hub, "POST", "/api/mailboxes/inbox/search", r#"{"q":"zzzz"}"#, None);
+        assert_eq!(std::str::from_utf8(&none.body).unwrap(), "[]");
+        assert_eq!(handle(&mut hub, "POST", "/api/mailboxes/inbox/search", r#"{"q":""}"#, None).status, 400);
+        let starred_search = handle(&mut hub, "POST", "/api/starred/search", r#"{"q":"invoice"}"#, None);
+        assert_eq!(std::str::from_utf8(&starred_search.body).unwrap(), "[]");
 
         let sync = handle(&mut hub, "POST", "/api/sync", "", None);
         assert_eq!(sync.status, 400);

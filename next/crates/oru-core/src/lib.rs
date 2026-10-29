@@ -12,13 +12,15 @@ mod store;
 
 pub use account::{account_json, guess_hosts, parse_account, Account};
 pub use imap::{
-    append_sent, begin_starttls, copy_away, pull_before, pull_session, raw_message, read_greeting, set_deleted, set_flagged,
+    append_sent, begin_starttls, copy_away, pull_before, pull_matching, pull_session, raw_message, read_greeting, set_deleted,
+    set_flagged,
     set_seen,
     set_unseen,
     Synced,
 };
 pub use json::{
-    error_json, json_string, mailboxes_json, parse_draft, parse_outbound, render_thread, thread_json, thread_list_json,
+    error_json, json_string, mailboxes_json, parse_draft, parse_outbound, parse_search, render_thread, thread_json,
+    thread_list_json,
     threads_json,
     Outbound,
 };

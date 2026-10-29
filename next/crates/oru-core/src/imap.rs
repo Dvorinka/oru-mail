@@ -101,6 +101,48 @@ pub fn pull_before<S: Read + Write>(
     Ok(threads)
 }
 
+/// Newest 40 messages in one mailbox whose header or body matches `query`.
+/// `before_uid` is the next page: only uids below that watermark.
+pub fn pull_matching<S: Read + Write>(
+    stream: &mut S,
+    user: &str,
+    password: &str,
+    mailbox: &str,
+    slug: &str,
+    query: &str,
+    before_uid: Option<u32>,
+) -> Result<Vec<Thread>, String> {
+    let query = query.trim();
+    if query.is_empty() || query.len() >= 200 || query.contains(['\r', '\n', '\0']) {
+        return Err("bad search".into());
+    }
+    let mut proto = Proto::new(stream);
+    proto.login(user, password)?;
+    proto.select(mailbox)?;
+    let mut uids = proto.search_text(query)?;
+    if let Some(before) = before_uid {
+        uids.retain(|uid| *uid < before);
+    }
+    uids.sort_unstable();
+    uids.dedup();
+    let start = uids.len().saturating_sub(FETCH_TAIL as usize);
+    let window = uids[start..].to_vec();
+    let threads = if window.is_empty() {
+        Vec::new()
+    } else {
+        let set = window.iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(",");
+        let mut threads = group_threads(slug, proto.uid_fetch(&set)?);
+        threads.sort_by(|left, right| {
+            let a = left.latest().map(|message| message.unix_secs).unwrap_or(0);
+            let b = right.latest().map(|message| message.unix_secs).unwrap_or(0);
+            b.cmp(&a)
+        });
+        threads
+    };
+    let _ = proto.exchange("LOGOUT");
+    Ok(threads)
+}
+
 pub fn set_seen<S: Read + Write>(
     stream: &mut S,
     user: &str,
@@ -294,24 +336,51 @@ impl<'a, S: Read + Write> Proto<'a, S> {
 
     fn search_uids(&mut self) -> Result<Vec<u32>, String> {
         let (lines, _) = self.exchange("UID SEARCH ALL")?;
-        let mut uids = Vec::new();
-        for line in lines {
-            let text = String::from_utf8_lossy(&line);
-            let Some(rest) = text.trim().strip_prefix('*') else {
-                continue;
-            };
-            let rest = rest.trim();
-            if !rest.to_ascii_uppercase().starts_with("SEARCH") {
-                continue;
+        Ok(uids_in_search(&lines))
+    }
+
+    /// TEXT matches the headers and the body. ASCII stays in a quoted string.
+    /// Anything else is a UTF-8 literal, which is what IMAP allows outside ASCII.
+    fn search_text(&mut self, query: &str) -> Result<Vec<u32>, String> {
+        if query.is_ascii() {
+            let (lines, _) = self.exchange(&format!("UID SEARCH TEXT {}", quote_imap(query)))?;
+            return Ok(uids_in_search(&lines));
+        }
+        self.tag += 1;
+        let tag = format!("a{:03}", self.tag);
+        let bytes = query.as_bytes();
+        let head = format!("{tag} UID SEARCH CHARSET UTF-8 TEXT {{{}}}\r\n", bytes.len());
+        self.stream.write_all(head.as_bytes()).map_err(|error| error.to_string())?;
+        self.stream.flush().map_err(|error| error.to_string())?;
+        loop {
+            let chunk = self.read_chunk()?;
+            let text = String::from_utf8_lossy(&chunk);
+            let trimmed = text.trim();
+            if trimmed.starts_with('+') {
+                break;
             }
-            let list = rest.split_once(' ').map(|(_, tail)| tail).unwrap_or("");
-            for token in list.split_whitespace() {
-                if let Ok(uid) = token.parse() {
-                    uids.push(uid);
-                }
+            if let Some(rest) = trimmed.strip_prefix(&tag) {
+                let rest = rest.trim();
+                return Err(if rest.is_empty() { "command failed".into() } else { rest.to_string() });
             }
         }
-        Ok(uids)
+        self.stream.write_all(bytes).map_err(|error| error.to_string())?;
+        self.stream.write_all(b"\r\n").map_err(|error| error.to_string())?;
+        self.stream.flush().map_err(|error| error.to_string())?;
+        let mut untagged = Vec::new();
+        loop {
+            let chunk = self.read_chunk()?;
+            let text = String::from_utf8_lossy(&chunk);
+            let trimmed = text.trim();
+            if let Some(rest) = trimmed.strip_prefix(&tag) {
+                let rest = rest.trim();
+                if rest.starts_with("OK") {
+                    return Ok(uids_in_search(&untagged));
+                }
+                return Err(if rest.is_empty() { "command failed".into() } else { rest.to_string() });
+            }
+            untagged.push(chunk);
+        }
     }
 
     fn append(&mut self, mailbox: &str, raw: &[u8]) -> Result<(), String> {
@@ -532,6 +601,27 @@ fn sequence_of(text: &str) -> Option<String> {
     let rest = text.trim().strip_prefix('*')?.trim();
     let number: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
     if number.is_empty() { None } else { Some(number) }
+}
+
+fn uids_in_search(lines: &[Vec<u8>]) -> Vec<u32> {
+    let mut uids = Vec::new();
+    for line in lines {
+        let text = String::from_utf8_lossy(line);
+        let Some(rest) = text.trim().strip_prefix('*') else {
+            continue;
+        };
+        let rest = rest.trim();
+        if !rest.to_ascii_uppercase().starts_with("SEARCH") {
+            continue;
+        }
+        let list = rest.split_once(' ').map(|(_, tail)| tail).unwrap_or("");
+        for token in list.split_whitespace() {
+            if let Ok(uid) = token.parse() {
+                uids.push(uid);
+            }
+        }
+    }
+    uids
 }
 
 fn exists_count(lines: &[Vec<u8>]) -> u32 {
@@ -942,6 +1032,60 @@ mod tests {
         assert_eq!(threads[0].id, "inbox:2");
         assert_eq!(threads[0].subject, "Older note");
         assert!(threads[0].starred());
+    }
+
+    #[test]
+    fn search_fetches_only_the_matching_page() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let raw = b"From: Ada <ada@studio.test>\r\nSubject: Studio notes\r\nDate: Thu, 01 Jan 1970 00:00:00 +0000\r\nMessage-ID: <hit@studio.test>\r\n\r\nThe invoice is in the body.\r\n";
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_nodelay(true).ok();
+            write(&mut stream, b"* OK test\r\n");
+            let mut commands = Vec::new();
+            loop {
+                let line = read_line(&mut stream);
+                let tag = line.split_whitespace().next().unwrap_or("a").to_string();
+                let upper = line.to_ascii_uppercase();
+                commands.push(line);
+                if upper.contains(" LOGIN ") {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains(" SELECT ") {
+                    write(&mut stream, b"* 80 EXISTS\r\n");
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains(" SEARCH ") {
+                    write(&mut stream, b"* SEARCH 2 7 90\r\n");
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains(" FETCH ") {
+                    write(&mut stream, format!("* 1 FETCH (UID 2 FLAGS () BODY[] {{{}}}\r\n", raw.len()).as_bytes());
+                    stream.write_all(raw).unwrap();
+                    write(&mut stream, b")\r\n");
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains("LOGOUT") {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                    let _ = tx.send(commands);
+                    break;
+                } else {
+                    write(&mut stream, format!("{tag} BAD\r\n").as_bytes());
+                }
+            }
+        });
+        let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client.set_nodelay(true).ok();
+        client.set_read_timeout(Some(Duration::from_secs(5))).ok();
+        read_greeting(&mut client).unwrap();
+        let threads = pull_matching(&mut client, "ada@studio.test", "secret", "INBOX", "inbox", "invoice", Some(7)).unwrap();
+        let commands = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let search = commands.iter().find(|line| line.to_ascii_uppercase().contains("SEARCH")).unwrap();
+        assert!(search.contains("UID SEARCH TEXT \"invoice\""), "{search}");
+        let fetch = commands.iter().find(|line| line.to_ascii_uppercase().contains("FETCH")).unwrap();
+        assert!(fetch.contains("UID FETCH 2"), "{fetch}");
+        assert!(!fetch.contains('7') && !fetch.contains("90"), "{fetch}");
+        assert_eq!(threads.len(), 1);
+        assert_eq!(threads[0].id, "inbox:2");
+        assert!(threads[0].messages[0].body.contains("invoice"));
     }
 
     #[test]

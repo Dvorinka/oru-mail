@@ -260,6 +260,28 @@ impl MemoryStore {
         self.threads.len() != before
     }
 
+    /// Threads in one mailbox whose subject, addresses, or body contain `query`.
+    /// At most 40. `before_uid` is the next page of matches that carry an IMAP uid.
+    /// Demo messages have no uid, so they only appear on the first page.
+    /// `starred` searches flagged threads from every mailbox already stored.
+    pub fn search(&self, mailbox_id: &str, query: &str, before_uid: Option<u32>) -> Vec<Thread> {
+        let needle = query.trim().to_lowercase();
+        if needle.is_empty() {
+            return Vec::new();
+        }
+        let mut found: Vec<Thread> = if mailbox_id == "starred" {
+            self.threads.iter().filter(|thread| thread.starred()).cloned().collect()
+        } else {
+            self.threads
+                .iter()
+                .filter(|thread| thread.mailbox_id == mailbox_id)
+                .cloned()
+                .collect()
+        };
+        found.retain(|thread| thread_matches(thread, &needle));
+        page_matches(found, before_uid)
+    }
+
     /// Starred threads from every mailbox, newest first.
     pub fn starred_threads(&self) -> Vec<Thread> {
         let mut found: Vec<Thread> = self.threads.iter().filter(|thread| thread.starred()).cloned().collect();
@@ -274,6 +296,56 @@ impl MemoryStore {
             thread.messages.iter().find(|message| message.id == message_id).and_then(|message| message.attachments.get(index))
         })
     }
+}
+
+fn thread_matches(thread: &Thread, needle: &str) -> bool {
+    if thread.subject.to_lowercase().contains(needle) {
+        return true;
+    }
+    thread.messages.iter().any(|message| {
+        message.from.name.to_lowercase().contains(needle)
+            || message.from.email.to_lowercase().contains(needle)
+            || message.to.iter().any(|address| {
+                address.name.to_lowercase().contains(needle) || address.email.to_lowercase().contains(needle)
+            })
+            || message.preview.to_lowercase().contains(needle)
+            || message.body.to_lowercase().contains(needle)
+    })
+}
+
+fn min_uid(thread: &Thread) -> Option<u32> {
+    thread
+        .messages
+        .iter()
+        .filter_map(|message| message.id.rsplit_once(':').and_then(|(_, uid)| uid.parse().ok()))
+        .min()
+}
+
+/// Highest uids first, then newest date within that page. A watermark drops uids at or above it.
+fn page_matches(threads: Vec<Thread>, before_uid: Option<u32>) -> Vec<Thread> {
+    let mut ranked: Vec<(u32, Thread)> = Vec::new();
+    let mut bare = Vec::new();
+    for thread in threads {
+        match min_uid(&thread) {
+            Some(uid) => {
+                if before_uid.map(|mark| uid < mark).unwrap_or(true) {
+                    ranked.push((uid, thread));
+                }
+            }
+            None if before_uid.is_none() => bare.push(thread),
+            None => {}
+        }
+    }
+    if !ranked.is_empty() {
+        ranked.sort_by(|left, right| right.0.cmp(&left.0));
+        ranked.truncate(40);
+        let mut page: Vec<Thread> = ranked.into_iter().map(|(_, thread)| thread).collect();
+        by_newest(&mut page);
+        return page;
+    }
+    by_newest(&mut bare);
+    bare.truncate(40);
+    bare
 }
 
 fn by_newest(threads: &mut [Thread]) {
@@ -398,5 +470,44 @@ mod tests {
         assert_eq!(thread.messages[0].to[0].email, "ada@studio.test");
         assert!(store.threads("sent").iter().any(|item| item.id == thread.id));
         assert_ne!(thread.id, "t3");
+    }
+
+    #[test]
+    fn search_reads_the_body_and_pages_by_uid() {
+        let mut store = MemoryStore::demo();
+        let hit = store.search("inbox", "invoice", None);
+        assert_eq!(hit.len(), 1);
+        assert_eq!(hit[0].id, "t2");
+        assert!(store.search("inbox", "no-such-word", None).is_empty());
+        assert!(store.search("starred", "invoice", None).is_empty());
+        store.toggle_star("t2");
+        assert_eq!(store.search("starred", "invoice", None)[0].id, "t2");
+        for uid in 1..=45 {
+            store.insert_thread(Thread {
+                id: format!("inbox:{uid}"),
+                mailbox_id: "inbox".into(),
+                subject: "Paged".into(),
+                messages: vec![Message {
+                    id: format!("inbox:{uid}"),
+                    message_id: format!("{uid}@studio.test"),
+                    from: Address::new("Ada", "ada@studio.test"),
+                    to: vec![],
+                    subject: "Paged".into(),
+                    preview: String::new(),
+                    body: "lime token".into(),
+                    html: String::new(),
+                    attachments: Vec::new(),
+                    unix_secs: uid as i64,
+                    unread: false,
+                    starred: false,
+                }],
+            });
+        }
+        let page = store.search("inbox", "lime token", None);
+        assert_eq!(page.len(), 40);
+        assert!(page.iter().all(|thread| min_uid(thread).unwrap() >= 6));
+        let older = store.search("inbox", "lime token", Some(6));
+        assert_eq!(older.len(), 5);
+        assert!(older.iter().all(|thread| min_uid(thread).unwrap() < 6));
     }
 }

@@ -32,6 +32,23 @@ function whoLine(message, mailboxId) {
   return name + ' · ' + email;
 }
 
+function listPath(id) {
+  return id === 'starred' ? '/api/starred' : '/api/mailboxes/' + encodeURIComponent(id) + '/threads';
+}
+
+function searchPath(id) {
+  return id === 'starred' ? '/api/starred/search' : '/api/mailboxes/' + encodeURIComponent(id) + '/search';
+}
+
+function oldestUid(rows) {
+  let oldest = null;
+  for (const row of rows) {
+    const uid = Number(String(row.id).split(':')[1]);
+    if (Number.isInteger(uid) && uid > 0 && (oldest === null || uid < oldest)) oldest = uid;
+  }
+  return oldest;
+}
+
 function guessHosts(email) {
   const domain = (email.split('@')[1] || '').toLowerCase();
   const known = {
@@ -103,21 +120,37 @@ export default function App() {
 
   useEffect(() => {
     let gone = false;
-    setLoaded(false);
-    getJson(mailboxId === 'starred' ? '/api/starred' : '/api/mailboxes/' + encodeURIComponent(mailboxId) + '/threads')
-      .then((rows) => {
-        if (gone) return;
-        setThreads(rows);
-        setLoaded(true);
-        setThreadId((current) => (rows.some((row) => row.id === current) ? current : rows[0] ? rows[0].id : ''));
-      })
-      .catch(() => {
-        if (!gone) setProblem('Could not load this mailbox.');
-      });
+    const needle = query.trim();
+    if (!needle) setLoaded(false);
+    const timer = setTimeout(() => {
+      const path = needle ? searchPath(mailboxId) : listPath(mailboxId);
+      const options = needle
+        ? {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ q: needle }),
+          }
+        : undefined;
+      getJson(path, options)
+        .then((rows) => {
+          if (gone) return;
+          setThreads(rows);
+          setLoaded(true);
+          setOlderNote('');
+          setThreadId((current) => (rows.some((row) => row.id === current) ? current : rows[0] ? rows[0].id : ''));
+        })
+        .catch(() => {
+          if (!gone) {
+            setLoaded(true);
+            setProblem(needle ? 'Search failed.' : 'Could not load this mailbox.');
+          }
+        });
+    }, needle ? 250 : 0);
     return () => {
       gone = true;
+      clearTimeout(timer);
     };
-  }, [mailboxId]);
+  }, [mailboxId, query]);
 
   useEffect(() => {
     if (!threadId) {
@@ -163,6 +196,7 @@ export default function App() {
     setCompose(false);
     setAccountOpen(false);
     setOlderNote('');
+    setQuery('');
     setMailboxId(id);
   }
 
@@ -170,7 +204,28 @@ export default function App() {
     setLoadingOlder(true);
     setProblem('');
     setOlderNote('');
+    const needle = query.trim();
     try {
+      if (needle) {
+        const before = oldestUid(threads);
+        if (!before) {
+          setOlderNote('No older mail.');
+          return;
+        }
+        const rows = await getJson(searchPath(mailboxId), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ q: needle, before: String(before) }),
+        });
+        if (rows.length === 0) setOlderNote('No older mail.');
+        else {
+          setThreads((current) => {
+            const seen = new Set(current.map((row) => row.id));
+            return current.concat(rows.filter((row) => !seen.has(row.id)));
+          });
+        }
+        return;
+      }
       const rows = await getJson('/api/mailboxes/' + encodeURIComponent(mailboxId) + '/older', { method: 'POST' });
       setThreads(rows);
       setLoaded(true);
@@ -183,6 +238,7 @@ export default function App() {
   }
 
   async function reload(nextMailbox) {
+    setQuery('');
     const boxes = await getJson('/api/mailboxes');
     setMailboxes(boxes);
     const preferred = nextMailbox || mailboxId;
@@ -415,13 +471,9 @@ export default function App() {
 
   const destinations = mailboxes.filter((mailbox) => mailbox.id !== mailboxId);
   const moveTarget = destinations.some((mailbox) => mailbox.id === moveTo) ? moveTo : destinations[0] ? destinations[0].id : '';
-  const needle = query.trim().toLowerCase();
-  const shown = threads.filter((thread) => {
-    if (!needle) return true;
-    const hay = [thread.from, thread.to, thread.subject, thread.preview].join(' ').toLowerCase();
-    return hay.includes(needle);
-  });
-  const selected = shown.find((thread) => thread.id === threadId) || threads.find((thread) => thread.id === threadId) || null;
+  const needle = query.trim();
+  const shown = threads;
+  const selected = shown.find((thread) => thread.id === threadId) || null;
   const open = detail && detail.id === threadId ? detail : null;
   const panel = compose || accountOpen;
 
