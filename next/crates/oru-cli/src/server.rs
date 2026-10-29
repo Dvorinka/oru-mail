@@ -194,6 +194,7 @@ fn handle(hub: &mut Hub, method: &str, path: &str, body: &str, ui: Option<&Path>
         ("GET", ["api", "mailboxes", id, "threads"]) if safe_id(id) => {
             Reply::json(200, threads_json(&hub.store, id))
         }
+        ("POST", ["api", "mailboxes", id, "older"]) if safe_id(id) => load_older(hub, id),
         ("GET", ["api", "threads", id]) if safe_id(id) => match thread_json(&hub.store, id) {
             Some(document) => Reply::json(200, document),
             None => Reply::json(404, error_json("no such thread")),
@@ -252,6 +253,30 @@ fn refresh(hub: &mut Hub) -> Reply {
         Ok(synced) => {
             hub.apply_sync(account, synced);
             Reply::json(200, status_json(hub))
+        }
+        Err(error) => {
+            hub.last_error = error.clone();
+            Reply::json(502, error_json(&error))
+        }
+    }
+}
+
+fn load_older(hub: &mut Hub, id: &str) -> Reply {
+    let Some(account) = hub.account.clone() else {
+        return Reply::json(200, threads_json(&hub.store, id));
+    };
+    let Some(imap_name) = hub.names.get(id).cloned() else {
+        return Reply::json(404, error_json("no such mailbox"));
+    };
+    let Some(before) = hub.store.oldest_uid(id) else {
+        return Reply::json(200, threads_json(&hub.store, id));
+    };
+    match crate::net::older(&account, &imap_name, id, before) {
+        Ok(threads) => {
+            for thread in threads {
+                hub.store.insert_thread(thread);
+            }
+            Reply::json(200, threads_json(&hub.store, id))
         }
         Err(error) => {
             hub.last_error = error.clone();
@@ -720,6 +745,11 @@ mod tests {
 
         let sync = handle(&mut hub, "POST", "/api/sync", "", None);
         assert_eq!(sync.status, 400);
+        let older = handle(&mut hub, "POST", "/api/mailboxes/inbox/older", "", None);
+        assert_eq!(older.status, 200);
+        let older_text = std::str::from_utf8(&older.body).unwrap();
+        assert!(older_text.contains("Studio notes"));
+        assert!(older_text.contains("Shipment"));
         let bad = handle(&mut hub, "POST", "/api/account", "{}", None);
         assert_eq!(bad.status, 400);
         assert!(hub.account.is_none());

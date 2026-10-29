@@ -27,7 +27,20 @@ impl MemoryStore {
     }
 
     pub fn insert_thread(&mut self, thread: Thread) {
+        if self.threads.iter().any(|existing| existing.id == thread.id) {
+            return;
+        }
         self.threads.push(thread);
+    }
+
+    /// Smallest IMAP uid already stored in this mailbox. Demo ids have no uid.
+    pub fn oldest_uid(&self, mailbox_id: &str) -> Option<u32> {
+        self.threads
+            .iter()
+            .filter(|thread| thread.mailbox_id == mailbox_id)
+            .flat_map(|thread| thread.messages.iter())
+            .filter_map(|message| message.id.split_once(':').and_then(|(_, uid)| uid.parse().ok()))
+            .min()
     }
 
     /// Demo mailbox the CLI and the shell read through the JSON API.
@@ -212,7 +225,7 @@ mod tests {
 
     #[test]
     fn inbox_is_newest_first_and_unread_follows_the_message() {
-        let store = MemoryStore::demo();
+        let mut store = MemoryStore::demo();
         let threads = store.threads("inbox");
         assert_eq!(threads.len(), 2);
         assert_eq!(threads[0].id, "t1");
@@ -221,6 +234,47 @@ mod tests {
         assert!(store.threads("archive").is_empty());
         assert_eq!(store.threads("sent").len(), 1);
         assert_eq!(store.thread("t2").unwrap().subject, "Shipment 441");
+        assert_eq!(store.oldest_uid("inbox"), None);
+        store.insert_thread(Thread {
+            id: "inbox:9".into(),
+            mailbox_id: "inbox".into(),
+            subject: "Newer".into(),
+            messages: vec![Message {
+                id: "inbox:9".into(),
+                message_id: "9@studio.test".into(),
+                from: Address::new("Ada", "ada@studio.test"),
+                to: vec![],
+                subject: "Newer".into(),
+                preview: String::new(),
+                body: String::new(),
+                unix_secs: 10,
+                unread: false,
+            }],
+        });
+        store.insert_thread(Thread {
+            id: "inbox:2".into(),
+            mailbox_id: "inbox".into(),
+            subject: "Older".into(),
+            messages: vec![Message {
+                id: "inbox:2".into(),
+                message_id: "2@studio.test".into(),
+                from: Address::new("Ada", "ada@studio.test"),
+                to: vec![],
+                subject: "Older".into(),
+                preview: String::new(),
+                body: String::new(),
+                unix_secs: 1,
+                unread: false,
+            }],
+        });
+        store.insert_thread(Thread {
+            id: "inbox:2".into(),
+            mailbox_id: "inbox".into(),
+            subject: "Duplicate".into(),
+            messages: vec![],
+        });
+        assert_eq!(store.oldest_uid("inbox"), Some(2));
+        assert_eq!(store.threads("inbox").iter().filter(|thread| thread.id == "inbox:2").count(), 1);
     }
 
     #[test]

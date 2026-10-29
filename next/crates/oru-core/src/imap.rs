@@ -72,6 +72,35 @@ pub fn pull_session<S: Read + Write>(stream: &mut S, user: &str, password: &str)
     })
 }
 
+/// Fetches up to 40 messages whose uid is below `before_uid`.
+pub fn pull_before<S: Read + Write>(
+    stream: &mut S,
+    user: &str,
+    password: &str,
+    mailbox: &str,
+    slug: &str,
+    before_uid: u32,
+) -> Result<Vec<Thread>, String> {
+    if before_uid <= 1 {
+        return Ok(Vec::new());
+    }
+    let mut proto = Proto::new(stream);
+    proto.login(user, password)?;
+    proto.select(mailbox)?;
+    let mut older: Vec<u32> = proto.search_uids()?.into_iter().filter(|uid| *uid < before_uid).collect();
+    older.sort_unstable();
+    let start = older.len().saturating_sub(FETCH_TAIL as usize);
+    let window = &older[start..];
+    let threads = if window.is_empty() {
+        Vec::new()
+    } else {
+        let set = window.iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(",");
+        group_threads(slug, proto.uid_fetch(&set)?)
+    };
+    let _ = proto.exchange("LOGOUT");
+    Ok(threads)
+}
+
 pub fn set_seen<S: Read + Write>(
     stream: &mut S,
     user: &str,
@@ -211,7 +240,15 @@ impl<'a, S: Read + Write> Proto<'a, S> {
     }
 
     fn fetch(&mut self, start: u32, end: u32) -> Result<Vec<Fetched>, String> {
-        let (lines, _) = self.exchange(&format!("FETCH {start}:{end} (UID FLAGS BODY.PEEK[])"))?;
+        self.fetch_command(&format!("FETCH {start}:{end} (UID FLAGS BODY.PEEK[])"))
+    }
+
+    fn uid_fetch(&mut self, set: &str) -> Result<Vec<Fetched>, String> {
+        self.fetch_command(&format!("UID FETCH {set} (UID FLAGS BODY.PEEK[])"))
+    }
+
+    fn fetch_command(&mut self, command: &str) -> Result<Vec<Fetched>, String> {
+        let (lines, _) = self.exchange(command)?;
         let mut messages = Vec::new();
         for line in lines {
             if let Some(fetched) = parse_fetch(&line) {
@@ -219,6 +256,28 @@ impl<'a, S: Read + Write> Proto<'a, S> {
             }
         }
         Ok(messages)
+    }
+
+    fn search_uids(&mut self) -> Result<Vec<u32>, String> {
+        let (lines, _) = self.exchange("UID SEARCH ALL")?;
+        let mut uids = Vec::new();
+        for line in lines {
+            let text = String::from_utf8_lossy(&line);
+            let Some(rest) = text.trim().strip_prefix('*') else {
+                continue;
+            };
+            let rest = rest.trim();
+            if !rest.to_ascii_uppercase().starts_with("SEARCH") {
+                continue;
+            }
+            let list = rest.split_once(' ').map(|(_, tail)| tail).unwrap_or("");
+            for token in list.split_whitespace() {
+                if let Ok(uid) = token.parse() {
+                    uids.push(uid);
+                }
+            }
+        }
+        Ok(uids)
     }
 
     fn append(&mut self, mailbox: &str, raw: &[u8]) -> Result<(), String> {
@@ -787,6 +846,55 @@ mod tests {
         assert_eq!(synced.sent_mailbox, "Sent");
         assert!(synced.names.iter().any(|(slug, _)| slug == "inbox"));
         assert!(format_rfc5322(0).contains("01 Jan 1970"));
+    }
+
+    #[test]
+    fn older_fetches_the_uids_below_the_watermark() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let raw = b"From: Ada <ada@studio.test>\r\nSubject: Older note\r\nDate: Thu, 01 Jan 1970 00:00:00 +0000\r\nMessage-ID: <old@studio.test>\r\n\r\nBefore the rest.\r\n";
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_nodelay(true).ok();
+            write(&mut stream, b"* OK test\r\n");
+            loop {
+                let line = read_line(&mut stream);
+                let tag = line.split_whitespace().next().unwrap_or("a").to_string();
+                let upper = line.to_ascii_uppercase();
+                if upper.contains(" LOGIN ") {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains(" SELECT ") {
+                    write(&mut stream, b"* 3 EXISTS\r\n");
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains(" SEARCH ") {
+                    write(&mut stream, b"* SEARCH 2 7 9\r\n");
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains(" FETCH ") {
+                    let _ = tx.send(line);
+                    write(&mut stream, format!("* 1 FETCH (UID 2 FLAGS () BODY[] {{{}}}\r\n", raw.len()).as_bytes());
+                    stream.write_all(raw).unwrap();
+                    write(&mut stream, b")\r\n");
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                } else if upper.contains(" LOGOUT ") {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                    break;
+                } else {
+                    write(&mut stream, format!("{tag} BAD\r\n").as_bytes());
+                }
+            }
+        });
+        let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client.set_nodelay(true).ok();
+        client.set_read_timeout(Some(Duration::from_secs(5))).ok();
+        read_greeting(&mut client).unwrap();
+        let threads = pull_before(&mut client, "ada@studio.test", "secret", "INBOX", "inbox", 7).unwrap();
+        let fetched = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(fetched.to_ascii_uppercase().contains("UID FETCH 2"), "{fetched}");
+        assert!(!fetched.contains('7') && !fetched.contains('9'), "{fetched}");
+        assert_eq!(threads.len(), 1);
+        assert_eq!(threads[0].id, "inbox:2");
+        assert_eq!(threads[0].subject, "Older note");
     }
 
     fn script(stream: &mut std::net::TcpStream, raw: &[u8]) {

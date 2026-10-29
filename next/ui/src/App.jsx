@@ -59,6 +59,8 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [accountOpen, setAccountOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderNote, setOlderNote] = useState('');
   const [query, setQuery] = useState('');
   const [signIn, setSignIn] = useState({
     email: '',
@@ -153,7 +155,24 @@ export default function App() {
   function openMailbox(id) {
     setCompose(false);
     setAccountOpen(false);
+    setOlderNote('');
     setMailboxId(id);
+  }
+
+  async function loadOlder() {
+    setLoadingOlder(true);
+    setProblem('');
+    setOlderNote('');
+    try {
+      const rows = await getJson('/api/mailboxes/' + encodeURIComponent(mailboxId) + '/older', { method: 'POST' });
+      setThreads(rows);
+      setLoaded(true);
+      if (rows.length === threads.length) setOlderNote('No older mail.');
+    } catch (error) {
+      setProblem(error.message);
+    } finally {
+      setLoadingOlder(false);
+    }
   }
 
   async function reload(nextMailbox) {
@@ -394,6 +413,12 @@ export default function App() {
             </button>
           ))
         )}
+        {mode === 'account' ? (
+          <button className="older" type="button" onClick={loadOlder} disabled={loadingOlder}>
+            {loadingOlder ? 'Loading…' : 'Older'}
+          </button>
+        ) : null}
+        {olderNote ? <p className="empty">{olderNote}</p> : null}
       </section>
       <article className="read">
         {problem ? <p className="problem">{problem}</p> : null}

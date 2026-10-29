@@ -68,6 +68,15 @@ button, input { font: inherit; }
   overflow: auto;
 }
 
+.older {
+  margin: 8px 12px 16px;
+  border: 0;
+  background: transparent;
+  color: #5e5b55;
+  cursor: pointer;
+  text-align: left;
+}
+
 .search {
   width: 100%;
   border: 0;

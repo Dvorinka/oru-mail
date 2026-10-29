@@ -4,11 +4,19 @@ use std::net::TcpStream;
 use std::time::Duration;
 
 use native_tls::TlsConnector;
-use oru_core::{append_sent, begin_starttls, pull_session, read_greeting, send_mail, set_seen, Account, Outgoing, Synced};
+use oru_core::{
+    append_sent, begin_starttls, pull_before, pull_session, read_greeting, send_mail, set_seen, Account, Outgoing, Synced,
+    Thread,
+};
 
 pub fn sync(account: &Account) -> Result<Synced, String> {
     let mut stream = open_imap(account)?;
     pull_session(&mut stream, &account.email, &account.password)
+}
+
+pub fn older(account: &Account, mailbox: &str, slug: &str, before_uid: u32) -> Result<Vec<Thread>, String> {
+    let mut stream = open_imap(account)?;
+    pull_before(&mut stream, &account.email, &account.password, mailbox, slug, before_uid)
 }
 
 pub fn mark_seen(account: &Account, mailbox: &str, uid: &str) -> Result<(), String> {
