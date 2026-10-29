@@ -142,7 +142,14 @@ button, input { font: inherit; }
 .files { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .files a { color: #1e6b45; }
 .files span { color: #5e5b55; font-size: 12px; }
-.actions { display: flex; gap: 8px; margin-top: 16px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; align-items: center; }
+.actions select {
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--sheet);
+  color: var(--ink);
+}
 .actions button,
 .send {
   background: var(--ink);

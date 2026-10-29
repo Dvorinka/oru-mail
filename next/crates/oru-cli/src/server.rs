@@ -225,6 +225,7 @@ fn handle(hub: &mut Hub, method: &str, path: &str, body: &str, ui: Option<&Path>
         ("POST", ["api", "threads", id, "unread"]) if safe_id(id) => mark_unread(hub, id),
         ("POST", ["api", "threads", id, "trash"]) if safe_id(id) => trash(hub, id),
         ("POST", ["api", "threads", id, "archive"]) if safe_id(id) => archive(hub, id),
+        ("POST", ["api", "threads", id, "move", dest]) if safe_id(id) && safe_id(dest) => move_to(hub, id, dest),
         ("POST", ["api", "threads", id, "star"]) if safe_id(id) => mark_star(hub, id),
         ("POST", ["api", "sign-out"]) => sign_out(hub),
         ("POST", ["api", "sync"]) => refresh(hub),
@@ -347,8 +348,24 @@ fn archive(hub: &mut Hub, id: &str) -> Reply {
     let Some(dest) = hub.store.mailboxes().into_iter().find(|mailbox| mailbox.role == MailboxRole::Archive) else {
         return Reply::json(400, error_json("no archive mailbox"));
     };
+    let dest_id = dest.id;
+    move_to(hub, id, &dest_id)
+}
+
+/// Copies each message into `dest_id` when that mailbox exists on the server,
+/// then stores `\Deleted` on the source. A failed copy leaves the thread where it is.
+fn move_to(hub: &mut Hub, id: &str, dest_id: &str) -> Reply {
+    if hub.store.thread(id).is_none() {
+        return Reply::json(404, error_json("no such thread"));
+    }
+    if !hub.store.mailboxes().iter().any(|mailbox| mailbox.id == dest_id) {
+        return Reply::json(404, error_json("no such mailbox"));
+    }
+    if hub.store.thread(id).is_some_and(|thread| thread.mailbox_id == dest_id) {
+        return Reply::json(200, "{\"ok\":true}".into());
+    }
     if let Some(account) = hub.account.clone() {
-        if let Some(imap_dest) = hub.names.get(&dest.id).cloned() {
+        if let Some(imap_dest) = hub.names.get(dest_id).cloned() {
             if let Some(thread) = hub.store.thread(id) {
                 for message in thread.messages {
                     let Some((slug, uid)) = message.id.split_once(':') else {
@@ -368,8 +385,7 @@ fn archive(hub: &mut Hub, id: &str) -> Reply {
             }
         }
     }
-    let dest_id = dest.id;
-    if !hub.store.move_thread(id, &dest_id) {
+    if !hub.store.move_thread(id, dest_id) {
         return Reply::json(404, error_json("no such thread"));
     }
     Reply::json(200, "{\"ok\":true}".into())
@@ -879,6 +895,20 @@ mod tests {
         assert!(std::str::from_utf8(&reply.body).unwrap().contains("\"mode\":\"demo\""));
         assert!(hub.account.is_none());
         assert!(hub.store.thread("t1").is_some());
+    }
+
+    #[test]
+    fn move_sends_a_demo_thread_to_another_mailbox() {
+        let mut hub = Hub::demo();
+        let moved = handle(&mut hub, "POST", "/api/threads/t2/move/sent", "", None);
+        assert_eq!(moved.status, 200);
+        assert!(hub.store.threads("sent").iter().any(|thread| thread.id == "t2"));
+        assert!(hub.store.threads("inbox").iter().all(|thread| thread.id != "t2"));
+        let same = handle(&mut hub, "POST", "/api/threads/t2/move/sent", "", None);
+        assert_eq!(same.status, 200);
+        assert_eq!(hub.store.threads("sent").iter().filter(|thread| thread.id == "t2").count(), 1);
+        assert_eq!(handle(&mut hub, "POST", "/api/threads/t2/move/nope", "", None).status, 404);
+        assert_eq!(handle(&mut hub, "POST", "/api/threads/missing/move/archive", "", None).status, 404);
     }
 
     #[test]

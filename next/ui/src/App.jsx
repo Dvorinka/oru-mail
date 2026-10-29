@@ -58,7 +58,7 @@ export default function App() {
   const [offline, setOffline] = useState(false);
   const [problem, setProblem] = useState('');
   const [compose, setCompose] = useState(false);
-  const [draft, setDraft] = useState({ to: '', subject: '', body: '', inReplyTo: '' });
+  const [draft, setDraft] = useState({ to: '', subject: '', body: '', inReplyTo: '', kind: '' });
   const seen = useRef('');
   const [sending, setSending] = useState(false);
   const [mode, setMode] = useState('demo');
@@ -68,6 +68,7 @@ export default function App() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderNote, setOlderNote] = useState('');
   const [query, setQuery] = useState('');
+  const [moveTo, setMoveTo] = useState('');
   const [signIn, setSignIn] = useState({
     email: '',
     password: '',
@@ -201,12 +202,17 @@ export default function App() {
       const created = await getJson('/api/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(draft),
+        body: JSON.stringify({
+          to: draft.to,
+          subject: draft.subject,
+          body: draft.body,
+          inReplyTo: draft.inReplyTo,
+        }),
       });
       const rows = await getJson('/api/mailboxes/sent/threads');
       setThreads(rows);
       setLoaded(true);
-      setDraft({ to: '', subject: '', body: '', inReplyTo: '' });
+      setDraft({ to: '', subject: '', body: '', inReplyTo: '', kind: '' });
       setCompose(false);
       setMailboxId('sent');
       setThreadId(created.id);
@@ -248,19 +254,44 @@ export default function App() {
     return thread.messages.reduce((best, message) => (message.unixSecs >= best.unixSecs ? message : best));
   }
 
-  function replyTo(thread) {
-    if (!thread.messages || thread.messages.length === 0) return;
-    const message = latestMessage(thread);
-    const quoted = (message.body || '')
+  function quotedBody(message) {
+    return (message.body || '')
       .split('\n')
       .map((line) => '> ' + line)
       .join('\n');
+  }
+
+  function replyTo(thread) {
+    if (!thread.messages || thread.messages.length === 0) return;
+    const message = latestMessage(thread);
+    const quoted = quotedBody(message);
     const subject = thread.subject.startsWith('Re:') ? thread.subject : 'Re: ' + thread.subject;
     setDraft({
       to: mailboxId === 'sent' ? thread.toEmail || message.toEmail || '' : thread.fromEmail || message.fromEmail || '',
       subject,
       body: quoted.trim() ? '\n\n' + quoted : '',
       inReplyTo: message.messageId || '',
+      kind: 'reply',
+    });
+    setAccountOpen(false);
+    setCompose(true);
+  }
+
+  function forwardMessage(thread) {
+    if (!thread.messages || thread.messages.length === 0) return;
+    const message = latestMessage(thread);
+    const quoted = quotedBody(message);
+    const subject = thread.subject.startsWith('Fwd:') ? thread.subject : 'Fwd: ' + thread.subject;
+    const from = message.fromEmail
+      ? (message.from || message.fromEmail) + ' <' + message.fromEmail + '>'
+      : message.from || '';
+    const header = 'Forwarded message\nFrom: ' + from + '\nSubject: ' + (message.subject || thread.subject || '');
+    setDraft({
+      to: '',
+      subject,
+      body: header + (quoted.trim() ? '\n\n' + quoted : ''),
+      inReplyTo: '',
+      kind: 'forward',
     });
     setAccountOpen(false);
     setCompose(true);
@@ -287,6 +318,20 @@ export default function App() {
           ? { ...row, unread: true, messages: row.messages.map((message) => ({ ...message, unread: true })) }
           : row
       );
+    } catch (error) {
+      setProblem(error.message);
+    }
+  }
+
+  async function moveThread(destId) {
+    if (!destId) return;
+    setProblem('');
+    try {
+      await getJson(
+        '/api/threads/' + encodeURIComponent(threadId) + '/move/' + encodeURIComponent(destId),
+        { method: 'POST' }
+      );
+      await reload(mailboxId);
     } catch (error) {
       setProblem(error.message);
     }
@@ -331,6 +376,8 @@ export default function App() {
     );
   }
 
+  const destinations = mailboxes.filter((mailbox) => mailbox.id !== mailboxId);
+  const moveTarget = destinations.some((mailbox) => mailbox.id === moveTo) ? moveTo : destinations[0] ? destinations[0].id : '';
   const needle = query.trim().toLowerCase();
   const shown = threads.filter((thread) => {
     if (!needle) return true;
@@ -508,7 +555,7 @@ export default function App() {
           </form>
         ) : compose ? (
           <form className="form" onSubmit={submit}>
-            <h1>New message</h1>
+            <h1>{draft.kind === 'forward' ? 'Forward' : draft.inReplyTo ? 'Reply' : 'New message'}</h1>
             <label>
               To
               <input
@@ -576,6 +623,9 @@ export default function App() {
                 <button type="button" onClick={() => replyTo(open)}>
                   Reply
                 </button>
+                <button className="ghost" type="button" onClick={() => forwardMessage(open)}>
+                  Forward
+                </button>
                 <button className="ghost" type="button" onClick={() => changeThread('star')}>
                   {open.starred ? 'Starred' : 'Star'}
                 </button>
@@ -590,6 +640,20 @@ export default function App() {
                 <button className="ghost" type="button" onClick={() => changeThread('trash')}>
                   Trash
                 </button>
+                {destinations.length > 0 ? (
+                  <>
+                    <select className="move" value={moveTarget} onChange={(event) => setMoveTo(event.target.value)}>
+                      {destinations.map((mailbox) => (
+                        <option key={mailbox.id} value={mailbox.id}>
+                          {mailbox.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button className="ghost" type="button" onClick={() => moveThread(moveTarget)}>
+                      Move
+                    </button>
+                  </>
+                ) : null}
               </div>
             ) : null}
           </>
