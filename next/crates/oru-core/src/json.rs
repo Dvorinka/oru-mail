@@ -168,6 +168,9 @@ fn push_thread(out: &mut String, thread: &Thread, with_messages: bool) {
     out.push(',');
     out.push_str("\"unread\":");
     out.push_str(if thread.unread() { "true" } else { "false" });
+    out.push(',');
+    out.push_str("\"starred\":");
+    out.push_str(if thread.starred() { "true" } else { "false" });
     if with_messages {
         out.push(',');
         out.push_str("\"messages\":[");
@@ -231,6 +234,9 @@ fn push_message(out: &mut String, message: &Message) {
     out.push(',');
     out.push_str("\"unread\":");
     out.push_str(if message.unread { "true" } else { "false" });
+    out.push(',');
+    out.push_str("\"starred\":");
+    out.push_str(if message.starred { "true" } else { "false" });
     out.push('}');
 }
 
@@ -406,6 +412,7 @@ mod tests {
         let second = threads.find("\"id\":\"t2\"").unwrap();
         assert!(first < second);
         assert!(threads.contains("\"unread\":true"));
+        assert!(threads.contains("\"starred\":false"));
         assert!(!threads.contains("\"body\""));
         let one = thread_json(&store, "t1").unwrap();
         assert!(one.contains("The rail stays dark"));
@@ -439,6 +446,7 @@ mod tests {
                 attachments: Vec::new(),
                 unix_secs: 1,
                 unread: false,
+                starred: false,
             }],
         });
         let threads = threads_json(&store, "inbox");

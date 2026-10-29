@@ -40,6 +40,11 @@ pub fn mark_deleted(account: &Account, mailbox: &str, uid: &str) -> Result<(), S
     oru_core::set_deleted(&mut stream, &account.email, &account.password, mailbox, uid)
 }
 
+pub fn mark_flagged(account: &Account, mailbox: &str, uid: &str, on: bool) -> Result<(), String> {
+    let mut stream = open_imap(account)?;
+    oru_core::set_flagged(&mut stream, &account.email, &account.password, mailbox, uid, on)
+}
+
 pub fn submit(account: &Account, to: &str, raw: &[u8]) -> Result<(), String> {
     let connector = tls()?;
     let mail = Outgoing {

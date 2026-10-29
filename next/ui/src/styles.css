@@ -121,6 +121,7 @@ button, input { font: inherit; }
 .from { font-weight: 600; }
 .from.unread { font-weight: 750; }
 .when, .preview { color: #5e5b55; font-size: 12.5px; }
+.flag { color: #5e5b55; font-weight: 650; margin-right: 8px; }
 .subject, .preview { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .mark {

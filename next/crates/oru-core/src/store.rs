@@ -78,6 +78,7 @@ impl MemoryStore {
                 attachments: Vec::new(),
                 unix_secs: 1_730_000_000,
                 unread: true,
+                starred: false,
             }],
         });
         store.insert_thread(Thread {
@@ -101,6 +102,7 @@ impl MemoryStore {
                 }],
                 unix_secs: 1_729_900_000,
                 unread: false,
+                starred: false,
             }],
         });
         store.insert_thread(Thread {
@@ -119,6 +121,7 @@ impl MemoryStore {
                 attachments: Vec::new(),
                 unix_secs: 1_729_800_000,
                 unread: false,
+                starred: false,
             }],
         });
         store
@@ -156,6 +159,7 @@ impl MemoryStore {
                 attachments: Vec::new(),
                 unix_secs: now_secs(),
                 unread: false,
+                starred: false,
             }],
         };
         self.insert_thread(thread.clone());
@@ -182,6 +186,16 @@ impl MemoryStore {
             message.unread = true;
         }
         true
+    }
+
+    /// A thread with any starred message becomes unstarred. Otherwise every message is starred.
+    pub fn toggle_star(&mut self, thread_id: &str) -> Option<bool> {
+        let thread = self.threads.iter_mut().find(|thread| thread.id == thread_id)?;
+        let next = !thread.messages.iter().any(|message| message.starred);
+        for message in &mut thread.messages {
+            message.starred = next;
+        }
+        Some(next)
     }
 
     pub fn move_thread(&mut self, thread_id: &str, mailbox_id: &str) -> bool {
@@ -283,6 +297,7 @@ mod tests {
                 attachments: Vec::new(),
                 unix_secs: 10,
                 unread: false,
+                starred: false,
             }],
         });
         store.insert_thread(Thread {
@@ -301,6 +316,7 @@ mod tests {
                 attachments: Vec::new(),
                 unix_secs: 1,
                 unread: false,
+                starred: false,
             }],
         });
         store.insert_thread(Thread {
@@ -309,6 +325,11 @@ mod tests {
             subject: "Duplicate".into(),
             messages: vec![],
         });
+        assert!(!store.thread("t2").unwrap().starred());
+        assert_eq!(store.toggle_star("t2"), Some(true));
+        assert!(store.thread("t2").unwrap().messages.iter().all(|message| message.starred));
+        assert_eq!(store.toggle_star("t2"), Some(false));
+        assert_eq!(store.toggle_star("missing"), None);
         assert_eq!(store.oldest_uid("inbox"), Some(2));
         assert_eq!(store.threads("inbox").iter().filter(|thread| thread.id == "inbox:2").count(), 1);
     }

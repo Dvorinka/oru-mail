@@ -270,9 +270,15 @@ export default function App() {
     setProblem('');
     if (kind === 'unread') seen.current = 'keep:' + threadId;
     try {
-      await getJson('/api/threads/' + encodeURIComponent(threadId) + '/' + kind, { method: 'POST' });
+      const updated = await getJson('/api/threads/' + encodeURIComponent(threadId) + '/' + kind, { method: 'POST' });
       if (kind === 'trash' || kind === 'archive') {
         await reload(mailboxId);
+        return;
+      }
+      if (kind === 'star') {
+        const starred = !!(updated && updated.starred);
+        setThreads((rows) => rows.map((row) => (row.id === threadId ? { ...row, starred } : row)));
+        setDetail((row) => (row && row.id === threadId ? updated : row));
         return;
       }
       setThreads((rows) => rows.map((row) => (row.id === threadId ? { ...row, unread: true } : row)));
@@ -410,7 +416,11 @@ export default function App() {
               <span className="row-copy">
                 <span className="row-top">
                   <span className={thread.unread ? 'from unread' : 'from'}>{party(thread, mailboxId)}</span>
-                  <span className="when">{whenLabel(thread.unixSecs)}</span>
+                  <span className="when">
+                    {thread.starred ? <span className="flag">Starred</span> : null}
+                    {thread.starred ? ' · ' : ''}
+                    {whenLabel(thread.unixSecs)}
+                  </span>
                 </span>
                 <span className="subject">{thread.subject}</span>
                 <span className="preview">{thread.preview}</span>
@@ -565,6 +575,9 @@ export default function App() {
               <div className="actions">
                 <button type="button" onClick={() => replyTo(open)}>
                   Reply
+                </button>
+                <button className="ghost" type="button" onClick={() => changeThread('star')}>
+                  {open.starred ? 'Starred' : 'Star'}
                 </button>
                 <button className="ghost" type="button" onClick={() => changeThread('unread')}>
                   Unread

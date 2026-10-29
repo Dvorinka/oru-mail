@@ -70,6 +70,7 @@ pub struct Message {
     /// Unix seconds. The store orders threads by the newest message.
     pub unix_secs: i64,
     pub unread: bool,
+    pub starred: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,5 +88,9 @@ impl Thread {
 
     pub fn unread(&self) -> bool {
         self.messages.iter().any(|message| message.unread)
+    }
+
+    pub fn starred(&self) -> bool {
+        self.messages.iter().any(|message| message.starred)
     }
 }

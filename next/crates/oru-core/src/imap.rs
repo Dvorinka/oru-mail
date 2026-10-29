@@ -143,6 +143,18 @@ pub fn copy_away<S: Read + Write>(
     Ok(())
 }
 
+pub fn set_flagged<S: Read + Write>(
+    stream: &mut S,
+    user: &str,
+    password: &str,
+    mailbox: &str,
+    uid: &str,
+    on: bool,
+) -> Result<(), String> {
+    let change = if on { "+FLAGS.SILENT (\\Flagged)" } else { "-FLAGS.SILENT (\\Flagged)" };
+    store_flag(stream, user, password, mailbox, uid, change)
+}
+
 pub fn set_deleted<S: Read + Write>(
     stream: &mut S,
     user: &str,
@@ -453,6 +465,7 @@ fn in_quotes(line: &[u8], at: usize) -> bool {
 struct Fetched {
     uid: String,
     unread: bool,
+    starred: bool,
     mail: ParsedMail,
 }
 
@@ -470,9 +483,11 @@ fn parse_fetch(chunk: &[u8]) -> Option<Fetched> {
         return None;
     }
     let unread = !flags.contains("\\SEEN");
+    let starred = flags.contains("\\FLAGGED");
     Some(Fetched {
         uid,
         unread,
+        starred,
         mail: mime::parse(&raw),
     })
 }
@@ -706,6 +721,7 @@ fn message_from(slug: &str, item: &Fetched) -> Message {
         },
         unix_secs: item.mail.unix_secs,
         unread: item.unread,
+        starred: item.starred,
     }
 }
 
@@ -902,7 +918,7 @@ mod tests {
                     write(&mut stream, format!("{tag} OK\r\n").as_bytes());
                 } else if upper.contains(" FETCH ") {
                     let _ = tx.send(line);
-                    write(&mut stream, format!("* 1 FETCH (UID 2 FLAGS () BODY[] {{{}}}\r\n", raw.len()).as_bytes());
+                    write(&mut stream, format!("* 1 FETCH (UID 2 FLAGS (\\Flagged) BODY[] {{{}}}\r\n", raw.len()).as_bytes());
                     stream.write_all(raw).unwrap();
                     write(&mut stream, b")\r\n");
                     write(&mut stream, format!("{tag} OK\r\n").as_bytes());
@@ -925,6 +941,7 @@ mod tests {
         assert_eq!(threads.len(), 1);
         assert_eq!(threads[0].id, "inbox:2");
         assert_eq!(threads[0].subject, "Older note");
+        assert!(threads[0].starred());
     }
 
     #[test]
@@ -966,6 +983,73 @@ mod tests {
             .unwrap();
         assert!(copy_at < delete_at);
         assert!(commands[copy_at].contains("\"Archive\""));
+    }
+
+    #[test]
+    fn star_stores_flagged_and_clear_removes_it() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_nodelay(true).ok();
+            write(&mut stream, b"* OK test\r\n");
+            let mut commands = Vec::new();
+            loop {
+                let line = read_line(&mut stream);
+                let tag = line.split_whitespace().next().unwrap_or("a").to_string();
+                let upper = line.to_ascii_uppercase();
+                commands.push(line);
+                if upper.contains("LOGOUT") {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                    let _ = tx.send(commands);
+                    break;
+                }
+                if upper.contains(" SELECT ") {
+                    write(&mut stream, b"* 1 EXISTS\r\n");
+                }
+                write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+            }
+        });
+        let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client.set_nodelay(true).ok();
+        client.set_read_timeout(Some(Duration::from_secs(5))).ok();
+        read_greeting(&mut client).unwrap();
+        set_flagged(&mut client, "ada@studio.test", "secret", "INBOX", "7", true).unwrap();
+        let commands = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(commands.iter().any(|line| line.contains("UID STORE 7 +FLAGS.SILENT (\\Flagged)")));
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_nodelay(true).ok();
+            write(&mut stream, b"* OK test\r\n");
+            let mut commands = Vec::new();
+            loop {
+                let line = read_line(&mut stream);
+                let tag = line.split_whitespace().next().unwrap_or("a").to_string();
+                let upper = line.to_ascii_uppercase();
+                commands.push(line);
+                if upper.contains("LOGOUT") {
+                    write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+                    let _ = tx.send(commands);
+                    break;
+                }
+                if upper.contains(" SELECT ") {
+                    write(&mut stream, b"* 1 EXISTS\r\n");
+                }
+                write(&mut stream, format!("{tag} OK\r\n").as_bytes());
+            }
+        });
+        let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client.set_nodelay(true).ok();
+        client.set_read_timeout(Some(Duration::from_secs(5))).ok();
+        read_greeting(&mut client).unwrap();
+        set_flagged(&mut client, "ada@studio.test", "secret", "INBOX", "7", false).unwrap();
+        let commands = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(commands.iter().any(|line| line.contains("UID STORE 7 -FLAGS.SILENT (\\Flagged)")));
     }
 
     fn script(stream: &mut std::net::TcpStream, raw: &[u8]) {

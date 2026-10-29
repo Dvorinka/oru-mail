@@ -225,6 +225,7 @@ fn handle(hub: &mut Hub, method: &str, path: &str, body: &str, ui: Option<&Path>
         ("POST", ["api", "threads", id, "unread"]) if safe_id(id) => mark_unread(hub, id),
         ("POST", ["api", "threads", id, "trash"]) if safe_id(id) => trash(hub, id),
         ("POST", ["api", "threads", id, "archive"]) if safe_id(id) => archive(hub, id),
+        ("POST", ["api", "threads", id, "star"]) if safe_id(id) => mark_star(hub, id),
         ("POST", ["api", "sign-out"]) => sign_out(hub),
         ("POST", ["api", "sync"]) => refresh(hub),
         ("POST", ["api", "account"]) => save_and_sync(hub, body),
@@ -331,6 +332,14 @@ fn mark_unread(hub: &mut Hub, id: &str) -> Reply {
     thread_reply(hub, id)
 }
 
+fn mark_star(hub: &mut Hub, id: &str) -> Reply {
+    let Some(on) = hub.store.toggle_star(id) else {
+        return Reply::json(404, error_json("no such thread"));
+    };
+    flag_on_server(hub, id, if on { ServerFlag::Flagged } else { ServerFlag::Unflagged });
+    thread_reply(hub, id)
+}
+
 fn archive(hub: &mut Hub, id: &str) -> Reply {
     if hub.store.thread(id).is_none() {
         return Reply::json(404, error_json("no such thread"));
@@ -396,6 +405,8 @@ enum ServerFlag {
     Seen,
     Unseen,
     Deleted,
+    Flagged,
+    Unflagged,
 }
 
 /// Updates every message in the thread whose id is `mailbox:uid`.
@@ -421,6 +432,8 @@ fn flag_on_server(hub: &mut Hub, id: &str, flag: ServerFlag) {
             ServerFlag::Seen => crate::net::mark_seen(&account, &imap_name, uid),
             ServerFlag::Unseen => crate::net::mark_unseen(&account, &imap_name, uid),
             ServerFlag::Deleted => crate::net::mark_deleted(&account, &imap_name, uid),
+            ServerFlag::Flagged => crate::net::mark_flagged(&account, &imap_name, uid, true),
+            ServerFlag::Unflagged => crate::net::mark_flagged(&account, &imap_name, uid, false),
         };
         if let Err(error) = result {
             hub.last_error = error;
@@ -809,6 +822,13 @@ mod tests {
         let after = std::str::from_utf8(&read.body).unwrap();
         assert!(!after.contains("\"unread\":true"));
         assert!(after.contains("\"unread\":false"));
+        let starred = handle(&mut hub, "POST", "/api/threads/t2/star", "", None);
+        assert_eq!(starred.status, 200);
+        assert!(std::str::from_utf8(&starred.body).unwrap().contains("\"starred\":true"));
+        let cleared = handle(&mut hub, "POST", "/api/threads/t2/star", "", None);
+        assert_eq!(cleared.status, 200);
+        assert!(std::str::from_utf8(&cleared.body).unwrap().contains("\"starred\":false"));
+        assert_eq!(handle(&mut hub, "POST", "/api/threads/missing/star", "", None).status, 404);
 
         let sync = handle(&mut hub, "POST", "/api/sync", "", None);
         assert_eq!(sync.status, 400);
