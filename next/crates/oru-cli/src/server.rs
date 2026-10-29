@@ -17,9 +17,10 @@ use std::time::Duration;
 
 use oru_core::{
     account_json, error_json, json_string, mailboxes_json, parse_account, parse_draft, parse_outbound, parse_search,
-    raw_message,
+    raw_message, raw_message_attached,
     render_thread,
-    thread_json, thread_list_json, threads_json, Account, Address, MailStore, MailboxRole, MemoryStore, Synced,
+    thread_json, thread_list_json, threads_json, Account, Address, Attachment, MailStore, MailboxRole, MemoryStore,
+    OutboundFile, Synced,
 };
 
 const FALLBACK: &str = r#"<!doctype html>
@@ -500,26 +501,47 @@ fn drafts_name(hub: &Hub) -> String {
         .unwrap_or_else(|| "Drafts".into())
 }
 
+fn compose_raw(name: &str, email: &str, message: &oru_core::Outbound) -> Vec<u8> {
+    match &message.file {
+        Some(file) => raw_message_attached(
+            name,
+            email,
+            &message.to,
+            &message.subject,
+            &message.body,
+            &message.in_reply_to,
+            Some(&file.name),
+            Some(&file.mime),
+            Some(&file.bytes),
+        ),
+        None => raw_message(name, email, &message.to, &message.subject, &message.body, &message.in_reply_to),
+    }
+}
+
+fn taken_file(file: Option<OutboundFile>) -> Option<Attachment> {
+    file.map(|file| Attachment {
+        id: String::new(),
+        name: file.name,
+        mime: file.mime,
+        bytes: file.bytes,
+    })
+}
+
 fn save_draft(hub: &mut Hub, body: &str) -> Reply {
     let message = match parse_draft(body) {
         Ok(message) => message,
         Err(reason) => return Reply::json(400, error_json(reason)),
     };
     if let Some(account) = hub.account.clone() {
-        let raw = raw_message(
-            &account.name,
-            &account.email,
-            &message.to,
-            &message.subject,
-            &message.body,
-            &message.in_reply_to,
-        );
+        let raw = compose_raw(&account.name, &account.email, &message);
         let mailbox = drafts_name(hub);
         if let Err(error) = crate::net::file_sent(&account, &mailbox, &raw) {
             hub.last_error = format!("Saved here, but the server did not keep the draft: {error}");
         }
     }
-    let thread = hub.store.save_draft(&message.to, &message.subject, &message.body);
+    let thread = hub
+        .store
+        .save_draft(&message.to, &message.subject, &message.body, taken_file(message.file));
     Reply::json(201, render_thread(&thread))
 }
 
@@ -529,17 +551,16 @@ fn send_message(hub: &mut Hub, body: &str) -> Reply {
         Err(reason) => return Reply::json(400, error_json(reason)),
     };
     let Some(account) = hub.account.clone() else {
-        let thread = hub.store.send(&message.to, &message.subject, &message.body);
+        let thread = hub.store.deliver(
+            Address::new("You", "you@oru.test"),
+            &message.to,
+            &message.subject,
+            &message.body,
+            taken_file(message.file),
+        );
         return Reply::json(201, render_thread(&thread));
     };
-    let raw = raw_message(
-        &account.name,
-        &account.email,
-        &message.to,
-        &message.subject,
-        &message.body,
-        &message.in_reply_to,
-    );
+    let raw = compose_raw(&account.name, &account.email, &message);
     if let Err(error) = crate::net::submit(&account, &message.to, &raw) {
         hub.last_error = error.clone();
         return Reply::json(502, error_json(&error));
@@ -548,9 +569,13 @@ fn send_message(hub: &mut Hub, body: &str) -> Reply {
     if let Err(error) = crate::net::file_sent(&account, &mailbox, &raw) {
         hub.last_error = format!("Sent, but the server did not keep a copy: {error}");
     }
-    let thread = hub
-        .store
-        .deliver(Address::new(&account.name, &account.email), &message.to, &message.subject, &message.body);
+    let thread = hub.store.deliver(
+        Address::new(&account.name, &account.email),
+        &message.to,
+        &message.subject,
+        &message.body,
+        taken_file(message.file),
+    );
     Reply::json(201, render_thread(&thread))
 }
 
@@ -988,6 +1013,34 @@ mod tests {
         assert!(std::str::from_utf8(&saved.body).unwrap().contains("Hold"));
         assert!(hub.store.threads("drafts").iter().any(|thread| thread.subject == "Hold"));
         assert!(hub.store.threads("sent").iter().all(|thread| thread.subject != "Hold"));
+        let with_file = handle(
+            &mut hub,
+            "POST",
+            "/api/messages",
+            r#"{"to":"ada@studio.test","subject":"Fold","body":"Hi","fileName":"invoice.txt","fileMime":"text/html","fileData":"VHJhY2tpbmc="}"#,
+            None,
+        );
+        assert_eq!(with_file.status, 201);
+        let text = std::str::from_utf8(&with_file.body).unwrap();
+        assert!(text.contains("invoice.txt"));
+        let id = text.split("\"attachments\":[{\"id\":\"").nth(1).unwrap().split('"').next().unwrap();
+        let download = handle(&mut hub, "GET", &format!("/api/attachments/{id}"), "", None);
+        assert_eq!(download.status, 200);
+        assert_eq!(download.body, b"Tracking");
+        let head = String::from_utf8(encode(&download)).unwrap();
+        assert!(head.contains("application/octet-stream"));
+        assert!(!head.to_ascii_lowercase().contains("text/html"));
+        assert_eq!(
+            handle(
+                &mut hub,
+                "POST",
+                "/api/messages",
+                r#"{"to":"ada@studio.test","subject":"Fold","body":"Hi","fileData":"!!!!"}"#,
+                None,
+            )
+            .status,
+            400
+        );
         assert_eq!(
             handle(&mut hub, "POST", "/api/drafts", r#"{"to":"not-an-email","subject":"Hold","body":""}"#, None).status,
             400

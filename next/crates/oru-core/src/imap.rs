@@ -865,6 +865,22 @@ pub fn decode_utf7(value: &str) -> String {
 }
 
 pub fn raw_message(from_name: &str, from_email: &str, to: &str, subject: &str, body: &str, in_reply_to: &str) -> Vec<u8> {
+    raw_message_attached(from_name, from_email, to, subject, body, in_reply_to, None, None, None)
+}
+
+/// Same message as [`raw_message`]. A file becomes a second MIME part.
+/// The HTTP download of a stored file stays `application/octet-stream` either way.
+pub fn raw_message_attached(
+    from_name: &str,
+    from_email: &str,
+    to: &str,
+    subject: &str,
+    body: &str,
+    in_reply_to: &str,
+    file_name: Option<&str>,
+    file_mime: Option<&str>,
+    file_bytes: Option<&[u8]>,
+) -> Vec<u8> {
     let from = if from_name.is_empty() || from_name == from_email {
         format!("<{from_email}>")
     } else if from_name.is_ascii() {
@@ -878,11 +894,58 @@ pub fn raw_message(from_name: &str, from_email: &str, to: &str, subject: &str, b
     }
     let date = chrono_now();
     let reply = reply_headers(in_reply_to);
-    format!(
-        "From: {from}\r\nTo: <{to}>\r\nSubject: {subject_header}\r\nDate: {date}\r\nMessage-ID: <{id}>\r\n{reply}MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n{body}\r\n",
-        id = format!("oru.{}@oru", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)),
-    )
-    .into_bytes()
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let id = format!("oru.{stamp}@oru");
+    let head = format!("From: {from}\r\nTo: <{to}>\r\nSubject: {subject_header}\r\nDate: {date}\r\nMessage-ID: <{id}>\r\n{reply}MIME-Version: 1.0\r\n");
+    let Some(bytes) = file_bytes.filter(|bytes| !bytes.is_empty()) else {
+        return format!("{head}Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n{body}\r\n").into_bytes();
+    };
+    let name = header_filename(file_name.unwrap_or("file"));
+    let mime = header_mime(file_mime.unwrap_or(""));
+    let boundary = format!("oru{stamp}");
+    let mut out = format!("{head}Content-Type: multipart/mixed; boundary=\"{boundary}\"\r\n\r\n");
+    out.push_str(&format!(
+        "--{boundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n{body}\r\n"
+    ));
+    out.push_str(&format!(
+        "--{boundary}\r\nContent-Type: {mime}; name=\"{name}\"\r\nContent-Disposition: attachment; filename=\"{name}\"\r\nContent-Transfer-Encoding: base64\r\n\r\n{}\r\n",
+        wrap_base64(bytes)
+    ));
+    out.push_str(&format!("--{boundary}--\r\n"));
+    out.into_bytes()
+}
+
+fn header_filename(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let clean: String = base
+        .chars()
+        .filter(|ch| ch.is_ascii() && !matches!(ch, '"' | '\\' | '\r' | '\n' | '/' | ';'))
+        .take(120)
+        .collect();
+    if clean.is_empty() { "file".into() } else { clean }
+}
+
+fn header_mime(mime: &str) -> String {
+    let mime = mime.trim();
+    let safe = !mime.is_empty()
+        && mime.contains('/')
+        && mime.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '-' | '+' | '.'));
+    if safe { mime.to_string() } else { "application/octet-stream".into() }
+}
+
+fn wrap_base64(bytes: &[u8]) -> String {
+    let encoded = crate::base64::encode(bytes);
+    let mut out = String::new();
+    for (index, ch) in encoded.chars().enumerate() {
+        if index > 0 && index % 76 == 0 {
+            out.push_str("\r\n");
+        }
+        out.push(ch);
+    }
+    out
 }
 
 fn reply_headers(in_reply_to: &str) -> String {
@@ -979,6 +1042,22 @@ mod tests {
         assert!(replied.contains("References: <m1@studio.test>\r\n"));
         let fresh = String::from_utf8(raw_message("Ada", "ada@studio.test", "you@oru.test", "Studio", "Hello", "")).unwrap();
         assert!(!fresh.contains("In-Reply-To"));
+        let attached = String::from_utf8(raw_message_attached(
+            "Ada",
+            "ada@studio.test",
+            "you@oru.test",
+            "Studio",
+            "Hello",
+            "",
+            Some("notes/invoice.txt"),
+            Some("text/plain"),
+            Some(b"Tracking\n"),
+        ))
+        .unwrap();
+        assert!(attached.contains("multipart/mixed"));
+        assert!(attached.contains("filename=\"invoice.txt\""));
+        assert!(attached.contains(&crate::base64::encode(b"Tracking\n")));
+        assert!(!attached.contains("notes/invoice.txt"));
         assert_eq!(synced.sent_mailbox, "Sent");
         assert!(synced.names.iter().any(|(slug, _)| slug == "inbox"));
         assert!(format_rfc5322(0).contains("01 Jan 1970"));

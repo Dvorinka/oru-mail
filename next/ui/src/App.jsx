@@ -49,6 +49,8 @@ function oldestUid(rows) {
   return oldest;
 }
 
+const emptyDraft = { to: '', subject: '', body: '', inReplyTo: '', kind: '', fileName: '', fileMime: '', fileData: '' };
+
 function guessHosts(email) {
   const domain = (email.split('@')[1] || '').toLowerCase();
   const known = {
@@ -75,7 +77,7 @@ export default function App() {
   const [offline, setOffline] = useState(false);
   const [problem, setProblem] = useState('');
   const [compose, setCompose] = useState(false);
-  const [draft, setDraft] = useState({ to: '', subject: '', body: '', inReplyTo: '', kind: '' });
+  const [draft, setDraft] = useState(emptyDraft);
   const seen = useRef('');
   const [sending, setSending] = useState(false);
   const [mode, setMode] = useState('demo');
@@ -270,9 +272,12 @@ export default function App() {
           subject: draft.subject,
           body: draft.body,
           inReplyTo: draft.inReplyTo,
+          fileName: draft.fileName,
+          fileMime: draft.fileMime,
+          fileData: draft.fileData,
         }),
       });
-      setDraft({ to: '', subject: '', body: '', inReplyTo: '', kind: '' });
+      setDraft(emptyDraft);
       setCompose(false);
       await reload('drafts');
       if (created.id) setThreadId(created.id);
@@ -296,12 +301,15 @@ export default function App() {
           subject: draft.subject,
           body: draft.body,
           inReplyTo: draft.inReplyTo,
+          fileName: draft.fileName,
+          fileMime: draft.fileMime,
+          fileData: draft.fileData,
         }),
       });
       const rows = await getJson('/api/mailboxes/sent/threads');
       setThreads(rows);
       setLoaded(true);
-      setDraft({ to: '', subject: '', body: '', inReplyTo: '', kind: '' });
+      setDraft(emptyDraft);
       setCompose(false);
       setMailboxId('sent');
       setThreadId(created.id);
@@ -356,6 +364,7 @@ export default function App() {
     const quoted = quotedBody(message);
     const subject = thread.subject.startsWith('Re:') ? thread.subject : 'Re: ' + thread.subject;
     setDraft({
+      ...emptyDraft,
       to: mailboxId === 'sent' ? thread.toEmail || message.toEmail || '' : thread.fromEmail || message.fromEmail || '',
       subject,
       body: quoted.trim() ? '\n\n' + quoted : '',
@@ -376,10 +385,9 @@ export default function App() {
       : message.from || '';
     const header = 'Forwarded message\nFrom: ' + from + '\nSubject: ' + (message.subject || thread.subject || '');
     setDraft({
-      to: '',
+      ...emptyDraft,
       subject,
       body: header + (quoted.trim() ? '\n\n' + quoted : ''),
-      inReplyTo: '',
       kind: 'forward',
     });
     setAccountOpen(false);
@@ -676,6 +684,37 @@ export default function App() {
                 onChange={(event) => setDraft({ ...draft, body: event.target.value })}
               />
             </label>
+            <label>
+              File
+              <input
+                type="file"
+                onChange={(event) => {
+                  const file = event.target.files && event.target.files[0];
+                  if (!file) {
+                    setDraft((current) => ({ ...current, fileName: '', fileMime: '', fileData: '' }));
+                    return;
+                  }
+                  if (file.size > 200000) {
+                    setProblem('That file is over 200 KB.');
+                    event.target.value = '';
+                    return;
+                  }
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const text = String(reader.result || '');
+                    const comma = text.indexOf(',');
+                    setDraft((current) => ({
+                      ...current,
+                      fileName: file.name,
+                      fileMime: file.type || 'application/octet-stream',
+                      fileData: comma >= 0 ? text.slice(comma + 1) : '',
+                    }));
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </label>
+            {draft.fileName ? <p className="note">{draft.fileName}</p> : null}
             <div className="actions">
               <button className="send" type="submit" disabled={sending}>
                 {sending ? 'Sending…' : 'Send'}

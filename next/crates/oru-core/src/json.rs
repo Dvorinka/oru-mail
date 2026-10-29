@@ -3,6 +3,14 @@
 
 use crate::{MailStore, Mailbox, Message, Thread};
 
+/// One file on a compose. The bytes are the decoded upload, capped at 200 KB.
+#[derive(Debug, PartialEq, Eq)]
+pub struct OutboundFile {
+    pub name: String,
+    pub mime: String,
+    pub bytes: Vec<u8>,
+}
+
 /// A message the shell asked to send.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Outbound {
@@ -11,6 +19,7 @@ pub struct Outbound {
     pub body: String,
     /// Message-ID this send answers, without brackets. Empty for a new message.
     pub in_reply_to: String,
+    pub file: Option<OutboundFile>,
 }
 
 pub fn mailboxes_json(store: &impl MailStore) -> String {
@@ -99,6 +108,9 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
     let mut subject = None;
     let mut body = None;
     let mut in_reply_to = None;
+    let mut file_name = None;
+    let mut file_mime = None;
+    let mut file_data = None;
     loop {
         skip_ws(bytes, &mut index);
         if index < bytes.len() && bytes[index] == b'}' {
@@ -118,6 +130,9 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
             "subject" => subject = Some(value),
             "body" => body = Some(value),
             "inReplyTo" => in_reply_to = Some(value),
+            "fileName" => file_name = Some(value),
+            "fileMime" => file_mime = Some(value),
+            "fileData" => file_data = Some(value),
             _ => {}
         }
         skip_ws(bytes, &mut index);
@@ -149,12 +164,44 @@ fn parse_compose(input: &str, require_send: bool) -> Result<Outbound, &'static s
         }
         subject = "(no subject)".to_string();
     }
+    let file = match file_data.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        None => None,
+        Some(data) => {
+            let bytes = crate::base64::decode(data).ok_or("bad attachment")?;
+            if bytes.len() > 200_000 {
+                return Err("attachment is too large");
+            }
+            Some(OutboundFile {
+                name: attachment_name(file_name.as_deref().unwrap_or("")),
+                mime: attachment_mime(file_mime.as_deref().unwrap_or("")),
+                bytes,
+            })
+        }
+    };
     Ok(Outbound {
         to,
         subject,
         body: body.unwrap_or_default(),
         in_reply_to: in_reply_to.unwrap_or_default().trim().trim_matches(|ch| ch == '<' || ch == '>').to_string(),
+        file,
     })
+}
+
+fn attachment_name(value: &str) -> String {
+    let base = value.rsplit(['/', '\\']).next().unwrap_or(value);
+    let clean: String = base
+        .chars()
+        .filter(|ch| ch.is_ascii() && !matches!(ch, '"' | '\\' | '\r' | '\n' | '/' | ';'))
+        .take(120)
+        .collect();
+    if clean.is_empty() { "file".into() } else { clean }
+}
+
+fn attachment_mime(value: &str) -> String {
+    let mime = value.trim();
+    let safe = mime.contains('/')
+        && mime.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '-' | '+' | '.'));
+    if safe { mime.to_string() } else { "application/octet-stream".into() }
 }
 
 fn push_mailbox(out: &mut String, mailbox: &Mailbox) {
@@ -499,6 +546,7 @@ mod tests {
             .unwrap();
         assert_eq!(parsed.subject, "Say \"hi\"");
         assert_eq!(parsed.body, "line\n2");
+        assert!(parsed.file.is_none());
         assert_eq!(parsed.in_reply_to, "");
         let reply = parse_outbound(r#"{"to":"ada@studio.test","subject":"Re: Hi","body":"","inReplyTo":"<m1@studio.test>"}"#)
             .unwrap();
@@ -516,5 +564,13 @@ mod tests {
         assert_eq!(before, Some(12));
         assert!(parse_search(r#"{"q":""}"#).is_err());
         assert!(parse_search(r#"{"q":"line\nbreak"}"#).is_err());
+        let with_file = parse_outbound(
+            r#"{"to":"ada@studio.test","subject":"Fold","body":"Hi","fileName":"notes/invoice.txt","fileMime":"text/plain","fileData":"VHJhY2tpbmc="}"#,
+        )
+        .unwrap();
+        let file = with_file.file.unwrap();
+        assert_eq!(file.name, "invoice.txt");
+        assert_eq!(file.bytes, b"Tracking");
+        assert!(parse_outbound(r#"{"to":"ada@studio.test","subject":"Fold","body":"","fileData":"!!!!"}"#).is_err());
     }
 }

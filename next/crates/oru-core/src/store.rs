@@ -133,7 +133,7 @@ impl MemoryStore {
     }
 
     /// Files a message in Drafts. An empty Drafts mailbox is created when missing.
-    pub fn save_draft(&mut self, to: &str, subject: &str, body: &str) -> Thread {
+    pub fn save_draft(&mut self, to: &str, subject: &str, body: &str, file: Option<crate::Attachment>) -> Thread {
         if !self.mailboxes.iter().any(|mailbox| mailbox.role == MailboxRole::Drafts) {
             self.insert_mailbox(Mailbox {
                 id: "drafts".into(),
@@ -149,20 +149,21 @@ impl MemoryStore {
             .unwrap_or_else(|| "drafts".into());
         self.next_id += 1;
         let id = self.next_id;
+        let message_id = format!("dm{id}");
         let thread = Thread {
             id: format!("d{id}"),
             mailbox_id,
             subject: subject.to_string(),
             messages: vec![Message {
-                id: format!("dm{id}"),
-                message_id: format!("dm{id}@oru.local"),
+                id: message_id.clone(),
+                message_id: format!("{message_id}@oru.local"),
                 from: Address::new("You", "you@oru.test"),
                 to: if to.is_empty() { Vec::new() } else { vec![Address::new(to, to)] },
                 subject: subject.to_string(),
                 preview: preview_line(body),
                 body: body.to_string(),
                 html: String::new(),
-                attachments: Vec::new(),
+                attachments: stamp_file(file, &message_id),
                 unix_secs: now_secs(),
                 unread: false,
                 starred: false,
@@ -174,10 +175,10 @@ impl MemoryStore {
 
     /// Files a message in Sent. The id is local to this process.
     pub fn send(&mut self, to: &str, subject: &str, body: &str) -> Thread {
-        self.deliver(Address::new("You", "you@oru.test"), to, subject, body)
+        self.deliver(Address::new("You", "you@oru.test"), to, subject, body, None)
     }
 
-    pub fn deliver(&mut self, from: Address, to: &str, subject: &str, body: &str) -> Thread {
+    pub fn deliver(&mut self, from: Address, to: &str, subject: &str, body: &str, file: Option<crate::Attachment>) -> Thread {
         if !self.mailboxes.iter().any(|mailbox| mailbox.id == "sent") {
             self.insert_mailbox(Mailbox {
                 id: "sent".into(),
@@ -188,20 +189,21 @@ impl MemoryStore {
         self.next_id += 1;
         let id = self.next_id;
         let preview = preview_line(body);
+        let message_id = format!("nm{id}");
         let thread = Thread {
             id: format!("n{id}"),
             mailbox_id: "sent".into(),
             subject: subject.to_string(),
             messages: vec![Message {
-                id: format!("nm{id}"),
-                message_id: format!("nm{id}@oru.local"),
+                id: message_id.clone(),
+                message_id: format!("{message_id}@oru.local"),
                 from,
                 to: vec![Address::new(to, to)],
                 subject: subject.to_string(),
                 preview,
                 body: body.to_string(),
                 html: String::new(),
-                attachments: Vec::new(),
+                attachments: stamp_file(file, &message_id),
                 unix_secs: now_secs(),
                 unread: false,
                 starred: false,
@@ -346,6 +348,14 @@ fn page_matches(threads: Vec<Thread>, before_uid: Option<u32>) -> Vec<Thread> {
     by_newest(&mut bare);
     bare.truncate(40);
     bare
+}
+
+fn stamp_file(file: Option<crate::Attachment>, message_id: &str) -> Vec<crate::Attachment> {
+    let Some(mut file) = file else {
+        return Vec::new();
+    };
+    file.id = format!("{message_id}:0");
+    vec![file]
 }
 
 fn by_newest(threads: &mut [Thread]) {
